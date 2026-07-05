@@ -1,0 +1,27 @@
+# Isolated E2E environment: an Appium server plus the test runner.
+# A physical/emulated device or cloud grid is attached to the `appium` service
+# out of band (host USB, remote ADB, or a Selenium/Appium grid endpoint).
+services:
+  appium:
+    image: appium/appium:latest
+    ports:
+      - "4723:4723"
+    # Devices are provided by the host; adjust for your target platform.
+    privileged: true
+    environment:
+      - APPIUM_HOST=0.0.0.0
+      - APPIUM_PORT=4723
+
+  runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      - appium
+    environment:
+      - E2E_SERVER_URL=http://appium:4723
+      - E2E_PLATFORM_NAME=Android
+      - E2E_DEVICE_NAME=emulator-5554
+    # Pass secrets (proxy lists, device creds) via an env file, kept out of VCS.
+    env_file:
+      - ../.env
