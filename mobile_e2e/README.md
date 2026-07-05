@@ -17,12 +17,20 @@ mobile_e2e/
 │   ├── proxy.py           # ProxyConfig — parses IP:Port:Login:Password
 │   └── session_manager.py # SessionManager — WebDriver lifecycle
 ├── workers/               # UI workers (page objects)
-│   └── base_worker.py     # BaseWorker: find / tap / type_text / is_visible
+│   ├── base_worker.py     # BaseWorker: find / tap / type_text / is_visible
+│   └── ui_worker.py       # UIWorker: read_screen_text / type_and_submit (retrying)
+├── ai/                    # LLM test-data generation (no Appium dependency)
+│   ├── agent.py           # AIAgent: generate_response(context) in a tone
+│   └── settings.py        # AISettings (OpenAI or local Llama via base_url)
+├── orchestrator/          # end-to-end pipeline + scheduling
+│   ├── orchestrator.py    # TaskOrchestrator, Profile, WorkflowResult
+│   └── example_schedule.py# asyncio recurring + parallel-profile examples
 ├── scheduler/             # concurrent job scheduling
 │   └── scheduler.py       # SessionScheduler, Job, JobResult
 ├── utils/                 # shared helpers
-│   └── logger.py          # rich-based logging
-├── tests/                 # pytest suite (proxy parsing has no server dep)
+│   ├── logger.py          # rich-based logging
+│   └── retry.py           # retry_on_ui_error decorator (flaky-test resistance)
+├── tests/                 # pytest suite (81 tests; no server/device needed)
 └── requirements.txt
 
 docker/
@@ -67,6 +75,35 @@ str(p)              # http://user:***@10.0.0.1:8080     (password masked in logs
 
 Invalid strings raise `ProxyParseError`; a session that fails to start raises
 `SessionStartupError` — both subclass `E2EFrameworkError`.
+
+### End-to-end pipeline
+
+`TaskOrchestrator` chains session → read → generate → type and cleans up the
+session no matter what. Failures are returned as `WorkflowResult`, not raised,
+so a batch keeps going:
+
+```python
+from mobile_e2e.ai import AIAgent
+from mobile_e2e.orchestrator import TaskOrchestrator
+
+agent = AIAgent("You reply to chat messages.", tone="friendly, concise",
+                fallback_response="Thanks for your message!")
+orchestrator = TaskOrchestrator(agent, char_delay=0.05)
+
+result = orchestrator.run_workflow(
+    proxy_string="10.0.0.1:8080:user:pass",
+    read_locator=("id", "incoming_message"),
+    input_locator=("id", "reply_box"),
+    submit_locator=("id", "send_button"),
+)
+print(result.ok, result.response)
+```
+
+Run many profiles (each with its own proxy and tone) sequentially or in
+parallel, and put the batch on a recurring `asyncio` schedule — see
+[orchestrator/example_schedule.py](orchestrator/example_schedule.py). For a
+distributed setup, wrap `orchestrator.run_profile` in a Celery task instead; the
+API is unchanged.
 
 ## Running
 
