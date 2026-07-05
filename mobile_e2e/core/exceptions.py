@@ -30,3 +30,14 @@ class SessionStartupError(SessionError):
 
 class SessionNotFoundError(SessionError, KeyError):
     """Raised when a session id is requested but is not tracked by the manager."""
+
+
+class UIActionError(E2EFrameworkError):
+    """Base class for failures while interacting with the UI."""
+
+
+class RetryExhaustedError(UIActionError):
+    """Raised when a retried UI action keeps failing after every attempt.
+
+    The original error is preserved on ``__cause__`` (via ``raise ... from``).
+    """
