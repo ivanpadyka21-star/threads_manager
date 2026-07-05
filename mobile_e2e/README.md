@@ -25,6 +25,9 @@ mobile_e2e/
 ├── orchestrator/          # end-to-end pipeline + scheduling
 │   ├── orchestrator.py    # TaskOrchestrator, Profile, WorkflowResult
 │   └── example_schedule.py# asyncio recurring + parallel-profile examples
+├── gui/                   # minimal Tkinter control panel (stdlib, no deps)
+│   ├── app.py             # the window (thin view, threaded run, live log)
+│   └── controller.py      # Tk-independent, unit-tested wiring
 ├── scheduler/             # concurrent job scheduling
 │   └── scheduler.py       # SessionScheduler, Job, JobResult
 ├── utils/                 # shared helpers
@@ -105,13 +108,33 @@ parallel, and put the batch on a recurring `asyncio` schedule — see
 distributed setup, wrap `orchestrator.run_profile` in a Celery task instead; the
 API is unchanged.
 
+### GUI
+
+A minimal Tkinter control panel (standard library — no extra dependency) to
+configure and run a workflow interactively:
+
+```bash
+python -m mobile_e2e.gui
+```
+
+Fill in the Appium server, an optional `IP:Port:Login:Password` proxy, the
+read/input locators (with a strategy dropdown: ID, Accessibility ID, XPath, …)
+and the AI agent's role + tone, then press **Run workflow**. The run happens on
+a background thread and framework logs + the result stream into the log pane.
+**Preview proxy** parses a proxy string (password masked) without needing a
+device — handy for a quick sanity check. All wiring lives in the Tk-independent
+`gui/controller.py`, which is covered by unit tests.
+
 ## Running
 
 ```bash
 pip install -r mobile_e2e/requirements.txt
 
-# Unit tests (proxy parsing needs no device/server)
+# Unit tests (no device/server needed — collaborators are mocked)
 pytest mobile_e2e/tests -v
+
+# Interactive control panel
+python -m mobile_e2e.gui
 
 # Full isolated environment
 docker compose -f docker/docker-compose.yml up --build
