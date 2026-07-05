@@ -25,6 +25,13 @@ def test_index_serves_page(client_and_jobs):
     assert b"Control Panel" in res.data
 
 
+def test_health_endpoint(client_and_jobs):
+    client, _ = client_and_jobs
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    assert res.get_json() == {"status": "ok"}
+
+
 def test_strategies_endpoint(client_and_jobs):
     client, _ = client_and_jobs
     res = client.get("/api/strategies")

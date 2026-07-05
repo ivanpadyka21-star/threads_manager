@@ -9,6 +9,22 @@ const proxyPreview = document.getElementById("proxy-preview");
 
 let polling = null;
 
+// --- Live server-health indicator ------------------------------------------
+const liveEl = document.getElementById("live");
+async function pingHealth() {
+  try {
+    const res = await fetch("/api/health", { cache: "no-store" });
+    const ok = res.ok && (await res.json()).status === "ok";
+    liveEl.className = "live " + (ok ? "online" : "offline");
+    liveEl.textContent = ok ? "● live" : "● offline";
+  } catch {
+    liveEl.className = "live offline";
+    liveEl.textContent = "● offline";
+  }
+}
+pingHealth();
+setInterval(pingHealth, 3000);
+
 function setStatus(text, cls) {
   statusEl.textContent = text;
   statusEl.className = "status " + cls;
