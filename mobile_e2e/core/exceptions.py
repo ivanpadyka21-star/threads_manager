@@ -41,3 +41,10 @@ class RetryExhaustedError(UIActionError):
 
     The original error is preserved on ``__cause__`` (via ``raise ... from``).
     """
+
+
+class AIAgentError(E2EFrameworkError):
+    """Raised when the AI agent cannot produce a response and no fallback is set.
+
+    The underlying provider error is preserved on ``__cause__``.
+    """

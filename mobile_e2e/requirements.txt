@@ -3,5 +3,7 @@ Appium-Python-Client>=3.1,<5
 selenium>=4.15
 pydantic-settings>=2.0
 rich
+# AI test-data generation (OpenAI-compatible; works with local Llama servers)
+openai>=1.30
 # testing
 pytest>=8.0
