@@ -1,5 +1,5 @@
-# Bootstraps the virtual environment (creating it on first run) and launches
-# the GUI. Run from anywhere:  powershell -ExecutionPolicy Bypass -File run_gui.ps1
+# Bootstraps the virtual environment (creating it on first run) and starts the
+# web app. Run from anywhere:  powershell -ExecutionPolicy Bypass -File run_web.ps1
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -13,8 +13,7 @@ if (-not (Test-Path $py)) {
     & $py -m pip install -r (Join-Path $root "mobile_e2e\requirements.txt")
 }
 
-# Activate for this shell (so the venv "starts" if you keep the window open)...
 & (Join-Path $venv "Scripts\Activate.ps1")
 
-Write-Host "[run] Launching Mobile E2E GUI..." -ForegroundColor Green
-& $py -m mobile_e2e.gui
+Write-Host "[run] Starting web app at http://127.0.0.1:5000 ..." -ForegroundColor Green
+& $py -m mobile_e2e.web

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mobile E2E — Control Panel</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Mobile E2E <span class="dim">Control Panel</span></h1>
+    <p class="sub">Configure a session, read the screen, generate a styled reply with the AI agent, and type it back.</p>
+  </header>
+
+  <main>
+    <form id="workflow-form" class="grid">
+      <fieldset>
+        <legend>Appium session</legend>
+        <label>Server URL <input name="server_url" value="http://127.0.0.1:4723"></label>
+        <label>Device <input name="device" value="emulator-5554"></label>
+        <label>Platform
+          <select name="platform">
+            <option>Android</option>
+            <option>iOS</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Proxy <span class="dim">IP:Port:Login:Password</span></legend>
+        <label>Proxy <input name="proxy_string" placeholder="10.0.0.1:8080:user:pass"></label>
+        <button type="button" id="preview-proxy" class="ghost">Preview proxy</button>
+        <output id="proxy-preview" class="hint"></output>
+      </fieldset>
+
+      <fieldset>
+        <legend>Locators</legend>
+        {% for field in ['read', 'input', 'submit'] %}
+        <div class="locator">
+          <span class="loc-label">{{ field }}{% if field == 'submit' %} <em>(optional)</em>{% endif %}</span>
+          <select name="{{ field }}_strategy">
+            {% for label, value in strategies.items() %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <input name="{{ field }}_value" placeholder="locator value">
+        </div>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset>
+        <legend>AI agent</legend>
+        <label>System prompt (role)
+          <textarea name="system_prompt" rows="3" placeholder="You reply to chat messages."></textarea>
+        </label>
+        <label>Tone of voice <input name="tone" placeholder="friendly, concise"></label>
+        <label>Fallback text <input name="fallback" placeholder="Thanks for your message!"></label>
+        <label>Model <input name="model" value="gpt-4o-mini"></label>
+        <label>Base URL <span class="dim">(local LLM)</span> <input name="base_url" placeholder="http://localhost:11434/v1"></label>
+        <label>API key <span class="dim">(blank = OPENAI_API_KEY)</span> <input name="api_key" type="password"></label>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" id="run">Run workflow</button>
+        <button type="button" id="clear-log" class="ghost">Clear log</button>
+        <span id="status" class="status idle">Idle</span>
+      </div>
+    </form>
+
+    <section class="log-wrap">
+      <div class="log-head">
+        <h2>Log</h2>
+        <span id="result-badge"></span>
+      </div>
+      <pre id="log" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

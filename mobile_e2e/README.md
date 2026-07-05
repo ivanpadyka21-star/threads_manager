@@ -25,9 +25,12 @@ mobile_e2e/
 ├── orchestrator/          # end-to-end pipeline + scheduling
 │   ├── orchestrator.py    # TaskOrchestrator, Profile, WorkflowResult
 │   └── example_schedule.py# asyncio recurring + parallel-profile examples
-├── gui/                   # minimal Tkinter control panel (stdlib, no deps)
-│   ├── app.py             # the window (thin view, threaded run, live log)
-│   └── controller.py      # Tk-independent, unit-tested wiring
+├── web/                   # Flask web control panel
+│   ├── app.py             # Flask app factory + JSON routes
+│   ├── service.py         # framework-independent wiring (unit tested)
+│   ├── jobs.py            # in-memory background job runner
+│   ├── templates/         # index.html
+│   └── static/            # style.css, app.js
 ├── scheduler/             # concurrent job scheduling
 │   └── scheduler.py       # SessionScheduler, Job, JobResult
 ├── utils/                 # shared helpers
@@ -108,22 +111,33 @@ parallel, and put the batch on a recurring `asyncio` schedule — see
 distributed setup, wrap `orchestrator.run_profile` in a Celery task instead; the
 API is unchanged.
 
-### GUI
+### Web UI
 
-A minimal Tkinter control panel (standard library — no extra dependency) to
-configure and run a workflow interactively:
+A small Flask site to configure and run a workflow from the browser:
 
 ```bash
-python -m mobile_e2e.gui
+python -m mobile_e2e.web        # then open http://127.0.0.1:5000
 ```
 
-Fill in the Appium server, an optional `IP:Port:Login:Password` proxy, the
-read/input locators (with a strategy dropdown: ID, Accessibility ID, XPath, …)
-and the AI agent's role + tone, then press **Run workflow**. The run happens on
-a background thread and framework logs + the result stream into the log pane.
-**Preview proxy** parses a proxy string (password masked) without needing a
-device — handy for a quick sanity check. All wiring lives in the Tk-independent
-`gui/controller.py`, which is covered by unit tests.
+The page collects the Appium server, an optional `IP:Port:Login:Password` proxy,
+the read/input/submit locators (each with a strategy dropdown: ID, Accessibility
+ID, XPath, …) and the AI agent's role + tone. **Run workflow** starts a
+background job and the page polls it, streaming framework logs and the final
+result into the log pane. **Preview proxy** parses a proxy string (password
+masked) without needing a device.
+
+Endpoints:
+
+| Method & path            | Purpose                                   |
+|--------------------------|-------------------------------------------|
+| `GET /`                  | The control panel page                    |
+| `GET /api/strategies`    | Locator strategies                        |
+| `POST /api/preview-proxy`| Masked proxy preview / 400 on bad input   |
+| `POST /api/run`          | Start a workflow job → `{job_id}` (202)   |
+| `GET /api/jobs/<id>`     | Job status, logs and result               |
+
+All wiring lives in the Flask-independent `web/service.py`, unit tested along
+with the routes (via the Flask test client) and the `JobManager`.
 
 ## Running
 
@@ -133,8 +147,8 @@ pip install -r mobile_e2e/requirements.txt
 # Unit tests (no device/server needed — collaborators are mocked)
 pytest mobile_e2e/tests -v
 
-# Interactive control panel
-python -m mobile_e2e.gui
+# Web control panel
+python -m mobile_e2e.web
 
 # Full isolated environment
 docker compose -f docker/docker-compose.yml up --build
