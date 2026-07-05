@@ -3,3 +3,7 @@
 /.idea
 /.env
 /*.json
+orchestrator/config/clients/*/credentials.json
+.venv/
+__pycache__/
+*.pyc
