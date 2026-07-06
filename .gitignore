@@ -7,3 +7,5 @@ orchestrator/config/clients/*/credentials.json
 .venv/
 __pycache__/
 *.pyc
+mobile_e2e/web/data/
+*.db

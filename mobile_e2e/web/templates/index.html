@@ -3,80 +3,194 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mobile E2E — Control Panel</title>
+  <title>SMM Studio — Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <header>
-    <h1>Mobile E2E <span class="dim">Control Panel</span>
-      <span id="live" class="live offline" title="server health">● offline</span>
-    </h1>
-    <p class="sub">Configure a session, read the screen, generate a styled reply with the AI agent, and type it back.</p>
-  </header>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">◆</span>
+        <span class="brand-name">SMM <b>Studio</b></span>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-tab="dashboard"><span>▚</span> Dashboard</button>
+        <button class="nav-item" data-tab="accounts"><span>◉</span> Accounts</button>
+        <button class="nav-item" data-tab="tasks"><span>☑</span> Tasks</button>
+        <button class="nav-item" data-tab="runs"><span>▶</span> Runs</button>
+        <button class="nav-item" data-tab="stats"><span>▤</span> Statistics</button>
+        <button class="nav-item" data-tab="audit"><span>≣</span> Audit</button>
+        <button class="nav-item" data-tab="settings"><span>⚙</span> Settings</button>
+      </nav>
+      <div class="side-foot">
+        <span id="live" class="live offline">● offline</span>
+      </div>
+    </aside>
 
-  <main>
-    <form id="workflow-form" class="grid">
-      <fieldset>
-        <legend>Appium session</legend>
-        <label>Server URL <input name="server_url" value="http://127.0.0.1:4723"></label>
-        <label>Device <input name="device" value="emulator-5554"></label>
-        <label>Platform
-          <select name="platform">
-            <option>Android</option>
-            <option>iOS</option>
-          </select>
-        </label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Proxy <span class="dim">IP:Port:Login:Password</span></legend>
-        <label>Proxy <input name="proxy_string" placeholder="10.0.0.1:8080:user:pass"></label>
-        <button type="button" id="preview-proxy" class="ghost">Preview proxy</button>
-        <output id="proxy-preview" class="hint"></output>
-      </fieldset>
-
-      <fieldset>
-        <legend>Locators</legend>
-        {% for field in ['read', 'input', 'submit'] %}
-        <div class="locator">
-          <span class="loc-label">{{ field }}{% if field == 'submit' %} <em>(optional)</em>{% endif %}</span>
-          <select name="{{ field }}_strategy">
-            {% for label, value in strategies.items() %}
-            <option value="{{ value }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-          <input name="{{ field }}_value" placeholder="locator value">
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <h1 id="page-title">Dashboard</h1>
+        <div class="topbar-actions">
+          <span class="hint" id="global-hint">Human-in-the-loop · every action needs your approval</span>
         </div>
-        {% endfor %}
-      </fieldset>
+      </header>
 
-      <fieldset>
-        <legend>AI agent</legend>
-        <label>System prompt (role)
-          <textarea name="system_prompt" rows="3" placeholder="You reply to chat messages."></textarea>
-        </label>
-        <label>Tone of voice <input name="tone" placeholder="friendly, concise"></label>
-        <label>Fallback text <input name="fallback" placeholder="Thanks for your message!"></label>
-        <label>Model <input name="model" value="gpt-4o-mini"></label>
-        <label>Base URL <span class="dim">(local LLM)</span> <input name="base_url" placeholder="http://localhost:11434/v1"></label>
-        <label>API key <span class="dim">(blank = OPENAI_API_KEY)</span> <input name="api_key" type="password"></label>
-      </fieldset>
+      <!-- Dashboard -->
+      <section class="tab active" id="tab-dashboard">
+        <div class="cards" id="summary-cards"></div>
+        <div class="panel">
+          <div class="panel-head"><h2>Accounts overview</h2></div>
+          <div id="dashboard-accounts" class="table-wrap"></div>
+        </div>
+      </section>
 
-      <div class="actions">
-        <button type="submit" id="run">Run workflow</button>
-        <button type="button" id="clear-log" class="ghost">Clear log</button>
-        <span id="status" class="status idle">Idle</span>
-      </div>
-    </form>
+      <!-- Accounts -->
+      <section class="tab" id="tab-accounts">
+        <div class="panel">
+          <div class="panel-head"><h2>Add account</h2></div>
+          <form id="account-form" class="form-grid">
+            <label>Name <input name="name" placeholder="Client / account name" required></label>
+            <label>Handle <input name="handle" placeholder="@handle"></label>
+            <label>Proxy <span class="dim">(optional)</span> <input name="proxy_string" placeholder="ip:port:login:pass"></label>
+            <label>Daily limit <input name="daily_limit" type="number" min="1" value="20"></label>
+            <label>Tone of voice <input name="tone" placeholder="friendly, concise"></label>
+            <label class="wide">Notes <input name="notes" placeholder="optional"></label>
+            <div class="form-actions">
+              <button type="submit">Add account</button>
+              <output id="account-msg" class="hint"></output>
+            </div>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Accounts</h2></div>
+          <div id="accounts-table" class="table-wrap"></div>
+        </div>
+      </section>
 
-    <section class="log-wrap">
-      <div class="log-head">
-        <h2>Log</h2>
-        <span id="result-badge"></span>
-      </div>
-      <pre id="log" aria-live="polite"></pre>
-    </section>
-  </main>
+      <!-- Tasks -->
+      <section class="tab" id="tab-tasks">
+        <div class="panel">
+          <div class="panel-head"><h2>New task</h2></div>
+          <form id="task-form" class="form-grid">
+            <label>Account
+              <select name="account_id" id="task-account"></select>
+            </label>
+            <label>Type
+              <select name="kind">
+                <option value="post">Post</option>
+                <option value="reply">Reply</option>
+                <option value="ai_generate">AI draft</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label>Title <input name="title" placeholder="short label"></label>
+            <label>Deadline <input name="deadline" type="datetime-local"></label>
+            <label class="wide">Content / AI prompt
+              <textarea name="payload" rows="3" placeholder="Text to post, or a prompt for the AI agent"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit">Queue task</button>
+              <span class="hint">Tasks start as <b>pending</b> — nothing runs until you approve.</span>
+            </div>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Task queue</h2>
+            <div class="filters">
+              <select id="task-filter-status">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="done">Done</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+          <div id="tasks-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Runs -->
+      <section class="tab" id="tab-runs">
+        <form id="workflow-form" class="run-grid">
+          <div class="panel">
+            <div class="panel-head"><h2>Appium session</h2></div>
+            <label>Server URL <input name="server_url" value="http://127.0.0.1:4723"></label>
+            <label>Device <input name="device" value="emulator-5554"></label>
+            <label>Platform
+              <select name="platform"><option>Android</option><option>iOS</option></select>
+            </label>
+            <label>Proxy <input name="proxy_string" placeholder="ip:port:login:pass"></label>
+            <button type="button" id="preview-proxy" class="ghost">Preview proxy</button>
+            <output id="proxy-preview" class="hint"></output>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Locators</h2></div>
+            {% for field in ['read', 'input', 'submit'] %}
+            <div class="locator">
+              <span class="loc-label">{{ field }}</span>
+              <select name="{{ field }}_strategy">
+                {% for label, value in strategies.items() %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <input name="{{ field }}_value" placeholder="value">
+            </div>
+            {% endfor %}
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>AI agent</h2></div>
+            <label>System prompt <textarea name="system_prompt" rows="2" placeholder="You reply to messages."></textarea></label>
+            <label>Tone <input name="tone" placeholder="friendly, concise"></label>
+            <label>Fallback <input name="fallback" placeholder="Thanks!"></label>
+            <label>Model <input name="model" value="gpt-4o-mini"></label>
+            <label>Base URL <input name="base_url" placeholder="local LLM (optional)"></label>
+          </div>
+          <div class="panel run-actions">
+            <button type="submit" id="run">Run workflow</button>
+            <button type="button" id="clear-log" class="ghost">Clear log</button>
+            <span id="status" class="status idle">Idle</span>
+          </div>
+        </form>
+        <div class="panel">
+          <div class="panel-head"><h2>Log</h2><span id="result-badge"></span></div>
+          <pre id="log"></pre>
+        </div>
+      </section>
+
+      <!-- Statistics -->
+      <section class="tab" id="tab-stats">
+        <div class="panel">
+          <div class="panel-head"><h2>Per-account statistics</h2></div>
+          <div id="stats-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Audit -->
+      <section class="tab" id="tab-audit">
+        <div class="panel">
+          <div class="panel-head"><h2>Audit log</h2></div>
+          <div id="audit-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section class="tab" id="tab-settings">
+        <div class="panel">
+          <div class="panel-head"><h2>Settings</h2></div>
+          <p class="dim">Global defaults live here. Per-account tone, proxy and daily limits are set on each account.</p>
+          <ul class="dim">
+            <li>Appium server &amp; AI model defaults come from environment (<code>E2E_*</code>).</li>
+            <li>Database: <code>mobile_e2e/web/data/dashboard.db</code>.</li>
+            <li>Guardrails: approval-gated actions, per-account daily limits, full audit trail.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

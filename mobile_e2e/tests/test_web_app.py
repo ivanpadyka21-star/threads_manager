@@ -22,7 +22,7 @@ def test_index_serves_page(client_and_jobs):
     client, _ = client_and_jobs
     res = client.get("/")
     assert res.status_code == 200
-    assert b"Control Panel" in res.data
+    assert b"SMM" in res.data and b"Dashboard" in res.data
 
 
 def test_health_endpoint(client_and_jobs):
