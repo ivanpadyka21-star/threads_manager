@@ -9,3 +9,7 @@ __pycache__/
 *.pyc
 mobile_e2e/web/data/
 *.db
+threads.key
+threads.crt
+threads.csr
+threads_credentials.json

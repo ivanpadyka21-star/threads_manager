@@ -299,6 +299,13 @@ def create_app(
 
 
 def main() -> None:
+    # Populate os.environ from .env so os.getenv-based integrations (Threads)
+    # see the configured values (pydantic settings read .env on their own).
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except Exception:  # noqa: BLE001 - .env is optional
+        pass
     app = create_app()
     host = os.getenv("E2E_WEB_HOST", "127.0.0.1")
     port = int(os.getenv("E2E_WEB_PORT", "5000"))
