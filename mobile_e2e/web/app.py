@@ -16,6 +16,7 @@ from flask import Flask, jsonify, render_template, request
 from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
+from mobile_e2e.web import threads_client
 from mobile_e2e.web.jobs import Job, JobManager
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
@@ -183,6 +184,44 @@ def create_app(
     def delete_task(task_id: int):
         db.delete_task(task_id)
         return jsonify({"deleted": task_id})
+
+    # -- Threads integration ------------------------------------------------
+    @app.get("/api/threads/status")
+    def threads_status():
+        account_id = request.args.get("account_id", type=int)
+        creds = threads_client.DEFAULT_CREDENTIALS_FILE
+        if account_id:
+            acc = db.get_account(account_id)
+            if acc and acc.get("credentials_file"):
+                creds = acc["credentials_file"]
+        return jsonify(threads_client.status(creds))
+
+    @app.post("/api/tasks/<int:task_id>/publish")
+    def publish_task(task_id: int):
+        """Publish an approved task's content to Threads via the official API."""
+        task = db.get_task(task_id)
+        if task is None:
+            return jsonify({"error": "task not found"}), 404
+        if task["status"] != "approved":
+            return jsonify({"error": "task must be approved first"}), 409
+        account_id = task.get("account_id")
+        account = db.get_account(account_id) if account_id else None
+        creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+        text = (task.get("result") or task.get("payload") or task.get("title") or "").strip()
+        if not text:
+            return jsonify({"error": "task has no content to publish"}), 400
+        try:
+            published_id = threads_client.publish_text(text, creds)
+        except threads_client.ThreadsNotConfigured as exc:
+            return jsonify({"error": str(exc), "configured": False}), 409
+        except Exception as exc:  # noqa: BLE001 - auto-flag a real publish failure
+            db.record_event("run.error", f"threads publish: {exc}"[:200], account_id, level="error")
+            db.set_task_status(task_id, "failed")
+            return jsonify({"error": str(exc)}), 502
+        db.record_event("run.ok", f"threads published {published_id}", account_id, level="ok")
+        db.set_task_result(task_id, f"[published {published_id}] {text}")
+        db.set_task_status(task_id, "done")
+        return jsonify({"published_id": published_id, "task": db.get_task(task_id)})
 
     @app.post("/api/tasks/<int:task_id>/execute")
     def execute_task(task_id: int):

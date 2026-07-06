@@ -83,7 +83,12 @@ const TRANSLATIONS = {
     "desc.stats": "Сводная статистика задач по каждому аккаунту.",
     "desc.analytics": "Эффективность 24/7, тренды, календарь запусков и ИИ-аналитик. Выберите окно.",
     "desc.audit": "Журнал всех действий по дням: кто, что и когда.",
-    "desc.settings": "Глобальные настройки и гарантии добросовестной работы.",
+    "desc.settings": "Глобальные настройки, подключение Threads и гарантии добросовестной работы.",
+    "th.title": "Подключение Threads", "th.configured": "Подключено ✓", "th.not": "Не настроено",
+    "th.missing_env": "Не хватает переменных окружения:", "th.ssl": "SSL-сертификаты не найдены",
+    "th.creds": "Нет файла кредов — OAuth не пройден", "th.ready": "Готово к публикации.",
+    "th.steps": "Заполните .env (см. .env.example), создайте SSL-сертификаты и пройдите OAuth: python api.py",
+    "btn.publish": "Опубликовать", "th.published": "Опубликовано в Threads",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -165,7 +170,12 @@ const TRANSLATIONS = {
     "desc.stats": "Summary task statistics per account.",
     "desc.analytics": "24/7 effectiveness, trends, launch calendar and AI analyst. Pick a window.",
     "desc.audit": "Day-by-day log of every action: who, what and when.",
-    "desc.settings": "Global settings and fair-use guardrails.",
+    "desc.settings": "Global settings, Threads connection and fair-use guardrails.",
+    "th.title": "Threads connection", "th.configured": "Connected ✓", "th.not": "Not configured",
+    "th.missing_env": "Missing environment variables:", "th.ssl": "SSL cert/key files not found",
+    "th.creds": "No credentials file — OAuth not completed", "th.ready": "Ready to publish.",
+    "th.steps": "Fill .env (see .env.example), create SSL certs and run OAuth: python api.py",
+    "btn.publish": "Publish", "th.published": "Published to Threads",
   },
 };
 

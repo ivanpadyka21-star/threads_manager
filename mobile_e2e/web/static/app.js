@@ -48,6 +48,7 @@ function renderTab(name) {
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
   if (name === "audit") loadAudit();
+  if (name === "settings") loadThreadsStatus();
 }
 function showTab(name) {
   currentTab = name;
@@ -222,6 +223,7 @@ async function loadTasks() {
       actions.append(el("button", { class: "mini danger", text: t("btn.reject"), onclick: () => setTaskStatus(tk.id, "rejected") }));
     } else if (tk.status === "approved") {
       actions.append(el("button", { class: "mini grad", text: t("btn.execute"), onclick: () => executeTask(tk.id) }));
+      actions.append(el("button", { class: "mini ok", text: t("btn.publish"), onclick: () => publishTask(tk.id) }));
       actions.append(el("button", { class: "mini", text: t("btn.done"), onclick: () => setTaskStatus(tk.id, "done") }));
     }
     actions.append(el("button", { class: "mini danger", text: "✕", title: t("btn.delete"), onclick: async () => {
@@ -239,6 +241,29 @@ async function approveTask(id) {
   catch (err) { alert(err); }
 }
 async function setTaskStatus(id, status) { await jpost(`/api/tasks/${id}/status`, { status }); loadTasks(); }
+async function publishTask(id) {
+  try {
+    const res = await jpost(`/api/tasks/${id}/publish`);
+    alert(t("th.published") + " (id " + res.published_id + ")");
+  } catch (err) { alert("⚠ " + err); }
+  loadTasks(); if (currentTab === "dashboard") loadDashboard();
+}
+async function loadThreadsStatus() {
+  const wrap = $("#threads-status"); if (!wrap) return;
+  let s; try { s = await api("/api/threads/status"); } catch { return; }
+  wrap.innerHTML = "";
+  const head = el("div", { class: "th-badge " + (s.configured ? "ok" : "no"), text: s.configured ? t("th.configured") : t("th.not") });
+  wrap.append(head);
+  const ul = el("ul", { class: "th-list" });
+  if (s.configured) { ul.append(el("li", { class: "ok", text: "✓ " + t("th.ready") })); }
+  else {
+    if (s.missing_env && s.missing_env.length) ul.append(el("li", { text: "• " + t("th.missing_env") + " " + s.missing_env.join(", ") }));
+    if (!s.ssl_ok) ul.append(el("li", { text: "• " + t("th.ssl") }));
+    if (!s.has_credentials) ul.append(el("li", { text: "• " + t("th.creds") }));
+    ul.append(el("li", { class: "steps", text: t("th.steps") }));
+  }
+  wrap.append(ul);
+}
 async function executeTask(id) {
   try {
     const res = await jpost(`/api/tasks/${id}/execute`);

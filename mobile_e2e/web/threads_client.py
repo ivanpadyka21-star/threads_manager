@@ -1,0 +1,106 @@
+"""Thin, lazily-imported wrapper around the official Threads API (pythreads).
+
+``pythreads`` insists on SSL env vars *at import time*, so nothing here imports
+it at module load. :func:`status` reports whether the integration is configured
+(and what is missing) without importing anything, and :func:`publish_text` only
+imports pythreads when an actual, configured publish is requested.
+
+This keeps the whole dashboard usable before any Threads credentials exist, and
+makes "connect a test account" an explicit, auditable step.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from pathlib import Path
+from typing import List, Optional
+
+# Environment variables required for the official OAuth + publish flow.
+REQUIRED_ENV = [
+    "THREADS_APP_ID",
+    "THREADS_API_SECRET",
+    "THREADS_REDIRECT_URI",
+    "THREADS_SSL_CERT_FILEPATH",
+    "THREADS_SSL_KEY_FILEPATH",
+]
+
+DEFAULT_CREDENTIALS_FILE = "threads_credentials.json"
+
+
+class ThreadsNotConfigured(Exception):
+    """Raised when a Threads action is attempted before setup is complete."""
+
+
+def status(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> dict:
+    """Report configuration state without importing pythreads.
+
+    Returns:
+        ``{configured, missing_env, ssl_ok, has_credentials, credentials_file}``.
+    """
+    missing_env = [k for k in REQUIRED_ENV if not os.getenv(k)]
+
+    ssl_ok = True
+    for key in ("THREADS_SSL_CERT_FILEPATH", "THREADS_SSL_KEY_FILEPATH"):
+        path = os.getenv(key)
+        if not path or not Path(path).is_file():
+            ssl_ok = False
+
+    has_credentials = bool(credentials_file) and Path(credentials_file).is_file()
+
+    configured = not missing_env and ssl_ok and has_credentials
+    return {
+        "configured": configured,
+        "missing_env": missing_env,
+        "ssl_ok": ssl_ok,
+        "has_credentials": has_credentials,
+        "credentials_file": credentials_file,
+    }
+
+
+def _ensure_ready(credentials_file: str) -> None:
+    st = status(credentials_file)
+    if st["configured"]:
+        return
+    problems: List[str] = []
+    if st["missing_env"]:
+        problems.append("missing env: " + ", ".join(st["missing_env"]))
+    if not st["ssl_ok"]:
+        problems.append("SSL cert/key files not found")
+    if not st["has_credentials"]:
+        problems.append(f"no credentials file ({credentials_file}) — run OAuth first")
+    raise ThreadsNotConfigured("; ".join(problems))
+
+
+async def _publish_async(text: str, credentials_file: str) -> str:
+    # Imported lazily: pythreads validates SSL env vars at import time.
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+
+    async with API(credentials=credentials) as api:
+        container_id = await api.create_container(text=text)
+        published_id = await api.publish_container(container_id)
+        return str(published_id)
+
+
+def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
+    """Publish a text thread via the official API.
+
+    Args:
+        text: The post body.
+        credentials_file: Path to the account's OAuth credentials JSON.
+
+    Returns:
+        The published container id.
+
+    Raises:
+        ThreadsNotConfigured: If setup is incomplete (clear, actionable message).
+        Exception: Any error raised by the Threads API during publishing.
+    """
+    if not text or not text.strip():
+        raise ValueError("Post text must not be empty.")
+    _ensure_ready(credentials_file)
+    return asyncio.run(_publish_async(text, credentials_file))

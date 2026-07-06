@@ -7,5 +7,7 @@ rich
 openai>=1.30
 # web UI
 Flask>=3.0
+# Threads official API (used only when credentials are configured)
+pythreads
 # testing
 pytest>=8.0
