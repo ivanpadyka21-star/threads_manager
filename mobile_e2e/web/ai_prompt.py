@@ -22,12 +22,16 @@ _KIND_ACTION = {
 }
 
 
-def build_ai_prompt(task: dict, account: Optional[dict] = None) -> Tuple[str, str]:
+def build_ai_prompt(
+    task: dict, account: Optional[dict] = None, char_limit: int = 480
+) -> Tuple[str, str]:
     """Return ``(system_prompt, user_prompt)`` for :class:`AIAgent`.
 
     Args:
         task: A task row (kind, payload, language, style, target, title).
         account: Optional account row (name, handle, tone).
+        char_limit: Hard cap on output length; Threads rejects posts over 500
+            characters, so the default leaves a safety margin.
 
     Returns:
         A tuple of the system instruction and the user message.
@@ -60,6 +64,8 @@ def build_ai_prompt(task: dict, account: Optional[dict] = None) -> Tuple[str, st
         "Do NOT invent events, dates, links, webinars or 'link in bio' calls to "
         "action that the brief did not ask for. Keep it authentic and "
         "appropriate; no hashtags unless asked. "
+        f"IMPORTANT: the whole post MUST be at most {char_limit} characters "
+        "(it will be rejected otherwise). Be concise. "
         "Output only the content itself, no explanations."
     )
 

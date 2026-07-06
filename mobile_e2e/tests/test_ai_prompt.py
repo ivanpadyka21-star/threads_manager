@@ -34,3 +34,19 @@ def test_no_language_no_voice_lines():
 def test_falls_back_to_title_when_no_payload():
     _, user = build_ai_prompt({"kind": "post", "title": "Weekly digest"})
     assert "Weekly digest" in user
+
+
+def test_char_limit_in_prompt():
+    system, _ = build_ai_prompt({"kind": "post", "payload": "hi"}, char_limit=480)
+    assert "480 characters" in system
+
+
+def test_clamp_truncates_long_text():
+    from mobile_e2e.web.publish import _clamp
+
+    short = "a short post"
+    assert _clamp(short) == short
+    long = "word " * 200  # 1000 chars
+    out = _clamp(long)
+    assert len(out) <= 500
+    assert out.endswith("…")

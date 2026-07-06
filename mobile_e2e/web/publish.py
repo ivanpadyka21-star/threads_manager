@@ -9,6 +9,20 @@ from __future__ import annotations
 
 from mobile_e2e.web import threads_client
 
+# Threads rejects posts longer than this; we truncate as a last-resort guard.
+THREADS_MAX_CHARS = 500
+
+
+def _clamp(text: str, limit: int = THREADS_MAX_CHARS) -> str:
+    """Trim text to ``limit`` chars, preferring a word boundary + ellipsis."""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1]
+    space = cut.rfind(" ")
+    if space > limit * 0.6:  # keep it readable if there's a nearby space
+        cut = cut[:space]
+    return cut.rstrip() + "…"
+
 
 def publish_task(db, task_id: int) -> str:
     """Publish a task's content to Threads and record the outcome.
@@ -34,6 +48,8 @@ def publish_task(db, task_id: int) -> str:
     text = (task.get("result") or task.get("payload") or task.get("title") or "").strip()
     if not text:
         raise ValueError("task has no content to publish")
+    # Safety net: never let a too-long draft fail the whole publish.
+    text = _clamp(text)
 
     # ThreadsNotConfigured surfaces to the caller untouched (no flagging).
     try:

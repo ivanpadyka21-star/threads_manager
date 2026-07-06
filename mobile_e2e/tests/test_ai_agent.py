@@ -41,7 +41,8 @@ def _client(create_side_effect=None, return_value=None) -> MagicMock:
 
 
 def _settings() -> AISettings:
-    return AISettings(api_key="test-key", model="test-model")
+    # _env_file=None isolates from any local .env (E2E_AI_* would leak in).
+    return AISettings(api_key="test-key", model="test-model", _env_file=None)
 
 
 def _agent(client, **kw) -> AIAgent:
