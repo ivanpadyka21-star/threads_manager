@@ -54,7 +54,12 @@ def build_ai_prompt(task: dict, account: Optional[dict] = None) -> Tuple[str, st
     if voice:
         sys_lines.append(f"Voice / character: {voice}.")
     sys_lines.append(
-        "Keep it authentic and appropriate; no hashtags unless asked. "
+        "Base the content strictly on the brief in the user message. The brief "
+        "may be terse (a topic, mood or wish, e.g. 'I want love') — treat it as "
+        "the exact theme and write a complete post that embodies it. "
+        "Do NOT invent events, dates, links, webinars or 'link in bio' calls to "
+        "action that the brief did not ask for. Keep it authentic and "
+        "appropriate; no hashtags unless asked. "
         "Output only the content itself, no explanations."
     )
 
