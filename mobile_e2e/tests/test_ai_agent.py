@@ -52,21 +52,22 @@ def _agent(client, **kw) -> AIAgent:
 
 # -- construction -----------------------------------------------------------
 # -- provider settings ------------------------------------------------------
+# _env_file=None isolates these from any local .env so we test code defaults.
 def test_gemini_is_default_provider():
-    s = AISettings(api_key="k")
+    s = AISettings(api_key="k", _env_file=None)
     assert s.provider == "gemini"
     assert s.base_url == GEMINI_OPENAI_BASE
     assert s.model == DEFAULT_GEMINI_MODEL
 
 
 def test_openai_provider_defaults():
-    s = AISettings(provider="openai", api_key="k")
+    s = AISettings(provider="openai", api_key="k", _env_file=None)
     assert s.base_url is None
     assert s.model == "gpt-4o-mini"
 
 
 def test_explicit_base_url_and_model_kept():
-    s = AISettings(api_key="k", base_url="http://localhost:11434/v1", model="llama3")
+    s = AISettings(api_key="k", base_url="http://localhost:11434/v1", model="llama3", _env_file=None)
     assert s.base_url == "http://localhost:11434/v1"
     assert s.model == "llama3"
 
@@ -74,7 +75,7 @@ def test_explicit_base_url_and_model_kept():
 def test_gemini_key_from_env(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "gm-123")
-    assert AISettings().api_key == "gm-123"
+    assert AISettings(_env_file=None).api_key == "gm-123"
 
 
 def test_empty_system_prompt_rejected():
