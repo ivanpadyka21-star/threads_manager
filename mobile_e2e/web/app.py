@@ -19,6 +19,8 @@ from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web import threads_client
 from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
+from mobile_e2e.web.publish import publish_task
+from mobile_e2e.web.scheduler import PostScheduler
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
 
@@ -198,31 +200,66 @@ def create_app(
         return jsonify(threads_client.status(creds))
 
     @app.post("/api/tasks/<int:task_id>/publish")
-    def publish_task(task_id: int):
-        """Publish an approved task's content to Threads via the official API."""
+    def publish_task_route(task_id: int):
+        """Publish an approved/scheduled task's content to Threads."""
         task = db.get_task(task_id)
         if task is None:
             return jsonify({"error": "task not found"}), 404
-        if task["status"] != "approved":
+        if task["status"] not in ("approved", "scheduled"):
             return jsonify({"error": "task must be approved first"}), 409
-        account_id = task.get("account_id")
-        account = db.get_account(account_id) if account_id else None
-        creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
-        text = (task.get("result") or task.get("payload") or task.get("title") or "").strip()
-        if not text:
-            return jsonify({"error": "task has no content to publish"}), 400
         try:
-            published_id = threads_client.publish_text(text, creds)
+            published_id = publish_task(db, task_id)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
         except threads_client.ThreadsNotConfigured as exc:
             return jsonify({"error": str(exc), "configured": False}), 409
-        except Exception as exc:  # noqa: BLE001 - auto-flag a real publish failure
-            db.record_event("run.error", f"threads publish: {exc}"[:200], account_id, level="error")
-            db.set_task_status(task_id, "failed")
+        except Exception as exc:  # noqa: BLE001 - already flagged by publish_task
             return jsonify({"error": str(exc)}), 502
-        db.record_event("run.ok", f"threads published {published_id}", account_id, level="ok")
-        db.set_task_result(task_id, f"[published {published_id}] {text}")
-        db.set_task_status(task_id, "done")
         return jsonify({"published_id": published_id, "task": db.get_task(task_id)})
+
+    # -- batches (multiple scheduled posts) ---------------------------------
+    @app.post("/api/batches")
+    def create_batch():
+        data = request.get_json(silent=True) or {}
+        briefs = data.get("briefs")
+        if not briefs:
+            topic = (data.get("topic") or "").strip()
+            count = int(data.get("count") or 0)
+            if topic and count:
+                briefs = [topic] * min(count, 10)
+        if not briefs:
+            return jsonify({"error": "provide briefs or topic+count"}), 400
+        account_id = data.get("account_id")
+        try:
+            batch = db.add_batch(
+                account_id=int(account_id) if account_id else None,
+                briefs=briefs,
+                language=data.get("language", ""),
+                style=data.get("style", ""),
+                interval_minutes=int(data.get("interval_minutes") or 60),
+                start_at=data.get("start_at") or None,
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        # Generate a draft for each post so the user can review before scheduling.
+        for task in batch["tasks"]:
+            account = db.get_account(task["account_id"]) if task["account_id"] else None
+            system_prompt, user_prompt = build_ai_prompt(task, account)
+            try:
+                draft = AIAgent(system_prompt).generate_response(user_prompt)
+                db.set_task_result(task["id"], draft)
+                db.record_event("ai.generate", f"batch draft #{task['id']}", task["account_id"], level="ok")
+            except Exception as exc:  # noqa: BLE001 - degrade; leave draft empty
+                db.record_event("ai.error", str(exc)[:200], task["account_id"], level="info")
+        return jsonify({"batch_id": batch["batch_id"], "tasks": db.list_batch(batch["batch_id"])}), 201
+
+    @app.get("/api/batches/<batch_id>")
+    def get_batch(batch_id: str):
+        return jsonify(db.list_batch(batch_id))
+
+    @app.post("/api/batches/<batch_id>/approve")
+    def approve_batch(batch_id: str):
+        return jsonify({"scheduled": db.approve_batch(batch_id)})
 
     @app.post("/api/tasks/<int:task_id>/execute")
     def execute_task(task_id: int):
@@ -306,7 +343,10 @@ def main() -> None:
         load_dotenv()
     except Exception:  # noqa: BLE001 - .env is optional
         pass
-    app = create_app()
+    store = Store(os.getenv("E2E_WEB_DB", _DEFAULT_DB))
+    app = create_app(store=store)
+    # Auto-publish scheduled batch posts in the background.
+    PostScheduler(store, interval_seconds=30).start()
     host = os.getenv("E2E_WEB_HOST", "127.0.0.1")
     port = int(os.getenv("E2E_WEB_PORT", "5000"))
     # Set E2E_WEB_DEBUG=1 for the "workshop" mode: the reloader restarts the

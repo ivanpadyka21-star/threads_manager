@@ -154,6 +154,45 @@ def test_ai_stats(store):
     assert ai["success_rate"] == 50.0
 
 
+def test_add_batch_creates_scheduled_tasks(store):
+    acc = store.add_account(name="A")
+    batch = store.add_batch(
+        account_id=acc["id"], briefs=["Post 1", "Post 2", "Post 3"],
+        language="English", style="friendly", interval_minutes=30,
+    )
+    assert len(batch["tasks"]) == 3
+    tasks = store.list_batch(batch["batch_id"])
+    assert all(t["status"] == "pending" for t in tasks)
+    assert all(t["batch_id"] == batch["batch_id"] for t in tasks)
+    # spaced 30 min apart, in order
+    times = [t["scheduled_for"] for t in tasks]
+    assert times == sorted(times) and all(times)
+
+
+def test_add_batch_caps_at_10(store):
+    acc = store.add_account(name="A")
+    batch = store.add_batch(account_id=acc["id"], briefs=[f"P{i}" for i in range(15)])
+    assert len(batch["tasks"]) == 10
+
+
+def test_add_batch_requires_briefs(store):
+    with pytest.raises(ValueError):
+        store.add_batch(account_id=None, briefs=["  ", ""])
+
+
+def test_approve_batch_and_due(store):
+    acc = store.add_account(name="A")
+    batch = store.add_batch(
+        account_id=acc["id"], briefs=["a", "b"], interval_minutes=1,
+        start_at="2000-01-01T00:00",  # in the past -> due
+    )
+    n = store.approve_batch(batch["batch_id"])
+    assert n == 2
+    due = store.due_scheduled_tasks()
+    assert len(due) == 2
+    assert all(t["status"] == "scheduled" for t in due)
+
+
 def test_notifications(store):
     acc = store.add_account(name="A")
     # a past reminder (due) + a recorded problem

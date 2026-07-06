@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from pathlib import Path
 
-# Task lifecycle states.
-TASK_STATES = ("pending", "approved", "done", "failed", "rejected")
+# Task lifecycle states. "scheduled" tasks are auto-published by the scheduler
+# when their scheduled_for time arrives.
+TASK_STATES = ("pending", "approved", "scheduled", "done", "failed", "rejected")
 # States that count against an account's daily limit.
 _COUNTS_AGAINST_LIMIT = ("approved", "done")
 
@@ -108,6 +110,8 @@ class Store:
         self._ensure_column("tasks", "language", "TEXT DEFAULT ''")
         self._ensure_column("tasks", "style", "TEXT DEFAULT ''")
         self._ensure_column("tasks", "target", "TEXT DEFAULT ''")
+        self._ensure_column("tasks", "scheduled_for", "TEXT")
+        self._ensure_column("tasks", "batch_id", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
 
@@ -204,9 +208,11 @@ class Store:
             "language": fields.get("language", "").strip(),
             "style": fields.get("style", "").strip(),
             "target": fields.get("target", "").strip(),
-            "status": "pending",
+            "status": fields.get("status", "pending"),
             "deadline": (fields.get("deadline") or None),
             "reminder": (fields.get("reminder") or None),
+            "scheduled_for": (fields.get("scheduled_for") or None),
+            "batch_id": fields.get("batch_id", ""),
             "created_at": _now(),
             "updated_at": _now(),
         }
@@ -214,15 +220,87 @@ class Store:
             cur = self._conn.execute(
                 """INSERT INTO tasks
                    (account_id, kind, title, payload, language, style, target,
-                    status, deadline, reminder, created_at, updated_at)
+                    status, deadline, reminder, scheduled_for, batch_id,
+                    created_at, updated_at)
                    VALUES (:account_id, :kind, :title, :payload, :language, :style,
-                           :target, :status, :deadline, :reminder, :created_at,
-                           :updated_at)""",
+                           :target, :status, :deadline, :reminder, :scheduled_for,
+                           :batch_id, :created_at, :updated_at)""",
                 cols,
             )
             task_id = cur.lastrowid
         self.log("task.create", f"{cols['kind']}: {cols['title']}", cols["account_id"])
         return self.get_task(task_id)
+
+    # -- batches (multiple scheduled posts) ---------------------------------
+    def add_batch(
+        self,
+        account_id: Optional[int],
+        briefs: List[str],
+        language: str = "",
+        style: str = "",
+        interval_minutes: int = 60,
+        start_at: Optional[str] = None,
+        kind: str = "post",
+    ) -> dict:
+        """Create up to 10 pending tasks spaced ``interval_minutes`` apart.
+
+        Each task starts as ``pending`` (for draft review) and carries a shared
+        ``batch_id`` and a computed ``scheduled_for``. Returns
+        ``{batch_id, tasks}``.
+        """
+        briefs = [b.strip() for b in briefs if b and b.strip()][:10]
+        if not briefs:
+            raise ValueError("Provide at least one post brief.")
+        interval = max(1, int(interval_minutes))
+        base = (
+            datetime.fromisoformat(start_at)
+            if start_at
+            else datetime.now(timezone.utc).replace(tzinfo=None)
+        )
+        batch_id = uuid.uuid4().hex
+        tasks = []
+        for i, brief in enumerate(briefs):
+            when = (base + timedelta(minutes=interval * i)).isoformat(timespec="minutes")
+            tasks.append(self.add_task(
+                account_id=account_id, kind=kind,
+                title=f"{i + 1}/{len(briefs)}: {brief[:40]}",
+                payload=brief, language=language, style=style,
+                scheduled_for=when, batch_id=batch_id,
+            ))
+        self.log("batch.create", f"{len(briefs)} posts", account_id)
+        return {"batch_id": batch_id, "tasks": tasks}
+
+    def list_batch(self, batch_id: str) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE batch_id = ? ORDER BY scheduled_for ASC",
+                (batch_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def approve_batch(self, batch_id: str) -> int:
+        """Move a batch's pending tasks to ``scheduled``. Returns the count."""
+        now = _now()
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "UPDATE tasks SET status = 'scheduled', updated_at = ? "
+                "WHERE batch_id = ? AND status = 'pending'",
+                (now, batch_id),
+            )
+            count = cur.rowcount
+        self.log("batch.approve", f"{count} posts scheduled", None)
+        return count
+
+    def due_scheduled_tasks(self) -> List[dict]:
+        """Scheduled tasks whose time has arrived (for the publisher)."""
+        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="minutes")
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE status = 'scheduled' "
+                "AND (scheduled_for IS NULL OR scheduled_for <= ?) "
+                "ORDER BY scheduled_for ASC", (now,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def list_tasks(
         self, account_id: Optional[int] = None, status: Optional[str] = None

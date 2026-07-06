@@ -143,12 +143,42 @@
           </form>
         </div>
         <div class="panel">
+          <div class="panel-head"><h2 data-i18n="batch.title">Пакет постов (до 10)</h2></div>
+          <form id="batch-form" class="form-grid">
+            <label><span data-i18n="task.account">Аккаунт</span>
+              <select name="account_id" id="batch-account"></select>
+            </label>
+            <label><span data-i18n="batch.interval">Интервал (мин)</span> <input name="interval_minutes" type="number" min="1" value="60"></label>
+            <label><span data-i18n="batch.start">Старт</span> <input name="start_at" type="datetime-local"></label>
+            <label><span data-i18n="task.language">Язык</span>
+              <select name="language">
+                <option value="">—</option>
+                <option value="Ukrainian">Українська</option>
+                <option value="Russian">Русский</option>
+                <option value="English">English</option>
+                <option value="Polish">Polski</option>
+                <option value="German">Deutsch</option>
+              </select>
+            </label>
+            <label><span data-i18n="task.style">Характер / стиль</span> <input name="style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно"></label>
+            <label class="wide"><span data-i18n="batch.briefs">Темы постов — по одной в строке (до 10)</span>
+              <textarea name="briefs" rows="5" data-i18n-ph="batch.briefs.ph" placeholder="Пост про любовь&#10;Совет по продуктивности&#10;Мотивация на утро"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="submit" data-i18n="batch.create">Сгенерировать черновики</button>
+              <span class="hint" data-i18n="batch.hint">ИИ создаст черновики. Посмотрите и подтвердите пакет — публикация по расписанию.</span>
+            </div>
+          </form>
+          <div id="batch-preview"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head">
             <h2 data-i18n="task.queue.title">Очередь задач</h2>
             <select id="task-filter-status">
               <option value="" data-i18n="filter.all">Все статусы</option>
               <option value="pending" data-i18n="status.pending">Ожидает</option>
               <option value="approved" data-i18n="status.approved">Одобрено</option>
+              <option value="scheduled" data-i18n="status.scheduled">Запланировано</option>
               <option value="done" data-i18n="status.done">Выполнено</option>
               <option value="rejected" data-i18n="status.rejected">Отклонено</option>
             </select>

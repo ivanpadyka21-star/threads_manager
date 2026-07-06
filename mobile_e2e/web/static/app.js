@@ -202,9 +202,51 @@ $("#account-form").addEventListener("submit", async (e) => {
 // --- tasks -----------------------------------------------------------------
 async function loadAccountOptions() {
   const rows = await api("/api/accounts");
-  const sel = $("#task-account"); sel.innerHTML = "";
-  if (!rows.length) { sel.append(el("option", { value: "", text: "—" })); return; }
-  rows.forEach(r => sel.append(el("option", { value: String(r.id), text: r.name + (r.handle ? ` (${r.handle})` : "") })));
+  ["#task-account", "#batch-account"].forEach(selId => {
+    const sel = $(selId); if (!sel) return; sel.innerHTML = "";
+    if (!rows.length) { sel.append(el("option", { value: "", text: "—" })); return; }
+    rows.forEach(r => sel.append(el("option", { value: String(r.id), text: r.name + (r.handle ? ` (${r.handle})` : "") })));
+  });
+}
+
+// --- batch of scheduled posts ----------------------------------------------
+$("#batch-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const briefs = (fd.get("briefs") || "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 10);
+  if (!briefs.length) { alert("Add at least one topic line"); return; }
+  const data = {
+    account_id: fd.get("account_id") ? Number(fd.get("account_id")) : null,
+    briefs, language: fd.get("language"), style: fd.get("style"),
+    interval_minutes: Number(fd.get("interval_minutes")) || 60,
+    start_at: fd.get("start_at") || null,
+  };
+  const btn = e.target.querySelector("button[type=submit]");
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "…";
+  try {
+    const res = await jpost("/api/batches", data);
+    renderBatchPreview(res.batch_id, res.tasks);
+  } catch (err) { alert("Error: " + err); }
+  btn.disabled = false; btn.textContent = label;
+});
+
+function renderBatchPreview(batchId, tasks) {
+  const wrap = $("#batch-preview"); wrap.innerHTML = "";
+  wrap.append(el("div", { class: "det-title", text: t("batch.preview") + " (" + tasks.length + ")" }));
+  tasks.forEach(tk => {
+    const when = (tk.scheduled_for || "").replace("T", " ");
+    const card = el("div", { class: "batch-card" });
+    card.append(el("div", { class: "bc-when", text: "🕒 " + when }));
+    card.append(el("div", { class: "bc-text", text: tk.result || "(no draft)" }));
+    wrap.append(card);
+  });
+  const approve = el("button", { class: "ok", text: t("batch.approve"), onclick: async () => {
+    const r = await jpost(`/api/batches/${batchId}/approve`);
+    wrap.innerHTML = `<div class="hint">OK — ${tf("batch.scheduled", { n: r.scheduled })}</div>`;
+    loadTasks();
+  }});
+  const bar = el("div", { class: "form-actions", style: "margin-top:12px" }); bar.append(approve);
+  wrap.append(bar);
 }
 async function loadTasks() {
   const status = $("#task-filter-status").value;
