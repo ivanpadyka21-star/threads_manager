@@ -249,6 +249,57 @@ class Store:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def notifications(self, within_hours: float = 24) -> dict:
+        """Aggregate actionable alerts for the notification bell.
+
+        Combines due/active reminders, imminent task deadlines and recent
+        problems (error events), newest first, with a badge ``count`` of the
+        items that need attention.
+        """
+        now_s = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+        soon_s = (datetime.now(timezone.utc).replace(tzinfo=None)
+                  + timedelta(hours=within_hours)).isoformat(timespec="seconds")
+        items: List[dict] = []
+
+        for r in self.list_reminders():
+            due = bool(r.get("reminder") and r["reminder"] <= now_s)
+            items.append({
+                "type": "reminder", "level": "warn" if due else "info",
+                "title": r.get("title") or "Reminder", "detail": r.get("kind", ""),
+                "account_id": r.get("account_id"), "account": r.get("account_name"),
+                "when": r.get("reminder"), "due": due,
+            })
+
+        with self._lock:
+            deadlines = self._conn.execute(
+                "SELECT t.*, a.name AS account_name FROM tasks t "
+                "LEFT JOIN accounts a ON a.id = t.account_id "
+                "WHERE t.deadline IS NOT NULL AND t.status IN ('pending','approved') "
+                "AND t.deadline <= ? ORDER BY t.deadline ASC", (soon_s,)
+            ).fetchall()
+            problems = self._conn.execute(
+                "SELECT au.*, a.name AS account_name FROM audit au "
+                "LEFT JOIN accounts a ON a.id = au.account_id "
+                "WHERE au.level = 'error' AND au.ts >= ? ORDER BY au.id DESC LIMIT 20",
+                (_cutoff(within_hours),),
+            ).fetchall()
+        for t in deadlines:
+            items.append({
+                "type": "deadline", "level": "warn", "title": t["title"] or "Task",
+                "detail": t["kind"], "account_id": t["account_id"],
+                "account": t["account_name"], "when": t["deadline"],
+            })
+        for e in problems:
+            items.append({
+                "type": "problem", "level": "error", "title": e["action"],
+                "detail": e["detail"], "account_id": e["account_id"],
+                "account": e["account_name"], "when": e["ts"],
+            })
+
+        items.sort(key=lambda x: x.get("when") or "", reverse=True)
+        count = sum(1 for i in items if i["type"] in ("deadline", "problem") or i.get("due"))
+        return {"count": count, "items": items}
+
     def get_task(self, task_id: int) -> Optional[dict]:
         with self._lock:
             row = self._conn.execute(

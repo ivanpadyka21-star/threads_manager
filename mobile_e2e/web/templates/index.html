@@ -39,13 +39,35 @@
     <!-- Main -->
     <main class="main">
       <header class="topbar">
-        <h1 id="page-title" data-i18n="nav.dashboard">Дашборд</h1>
-        <span class="hint" data-i18n="hint.hitl">Человек в цикле · каждое действие подтверждаете вы</span>
+        <div class="topbar-title">
+          <h1 id="page-title" data-i18n="nav.dashboard">Дашборд</h1>
+          <div id="page-desc" class="page-desc"></div>
+        </div>
+        <div class="topbar-right">
+          <span class="hint hide-sm" data-i18n="hint.hitl">Человек в цикле · каждое действие подтверждаете вы</span>
+          <div class="bell-wrap">
+            <button id="bell" class="bell-btn" aria-label="Notifications">🔔<span id="bell-badge" class="bell-badge" hidden>0</span></button>
+            <div id="notif-panel" class="notif-panel" hidden>
+              <div class="notif-head"><span data-i18n="notif.title">Оповещения</span></div>
+              <div id="notif-list"></div>
+            </div>
+          </div>
+        </div>
       </header>
 
       <!-- Dashboard -->
       <section class="tab active" id="tab-dashboard">
-        <div class="cards" id="summary-cards"></div>
+        <div class="metrics" id="summary-cards"></div>
+        <div class="charts-2">
+          <div class="panel">
+            <div class="panel-head"><h2 data-i18n="dash.activity">Активность (14 дней)</h2></div>
+            <div id="dash-activity"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2 data-i18n="dash.eff">Эффективность (30 дней)</h2></div>
+            <div id="dash-trend"></div>
+          </div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2 data-i18n="reminders.title">Напоминания</h2></div>
           <div id="reminders-list" class="table-wrap"></div>

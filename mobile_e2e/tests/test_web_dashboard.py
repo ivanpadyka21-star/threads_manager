@@ -173,6 +173,16 @@ def test_analytics_ai_route_degrades(client):
     assert body["answer"] is None and "error" in body and body["data"]
 
 
+def test_notifications_route(client):
+    acc = _add_account(client)
+    client.post("/api/tasks", json={"account_id": acc["id"], "title": "P", "reminder": "2000-01-01T00:00"})
+    res = client.get("/api/notifications")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert "count" in body and "items" in body
+    assert any(i["type"] == "reminder" for i in body["items"])
+
+
 def test_analytics_trend_route(client):
     res = client.get("/api/analytics/trend?days=10")
     assert res.status_code == 200

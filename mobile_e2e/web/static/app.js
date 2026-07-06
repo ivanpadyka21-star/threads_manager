@@ -1,6 +1,8 @@
 "use strict";
 
 const t = (k) => window.I18N.t(k);
+const tf = (k, params) => { let s = t(k); for (const [p, v] of Object.entries(params || {})) s = s.replace("{" + p + "}", v); return s; };
+const PINK = "#ff3d7f", TEAL = "#2dd4bf", BLUE = "#6f8bff", VIOLET = "#b24bff";
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -52,13 +54,18 @@ function showTab(name) {
   $$(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
   $$(".tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + name));
   $("#page-title").textContent = t(TAB_KEYS[name] || name);
+  $("#page-desc").textContent = t("desc." + name);
   renderTab(name);
 }
 $$(".nav-item").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 
 // --- language --------------------------------------------------------------
 window.I18N.apply();
-window.I18N.onChange = () => { $("#page-title").textContent = t(TAB_KEYS[currentTab]); renderTab(currentTab); };
+window.I18N.onChange = () => {
+  $("#page-title").textContent = t(TAB_KEYS[currentTab]);
+  $("#page-desc").textContent = t("desc." + currentTab);
+  renderTab(currentTab); loadNotifications();
+};
 $$("#lang-toggle button").forEach(b => b.addEventListener("click", () => {
   window.I18N.setLang(b.dataset.lang);
   $$("#lang-toggle button").forEach(x => x.classList.toggle("active", x.dataset.lang === b.dataset.lang));
@@ -74,23 +81,66 @@ async function pingHealth() {
 }
 pingHealth(); setInterval(pingHealth, 3000);
 
+// --- notifications ---------------------------------------------------------
+const NOTIF_ICON = { reminder: "🔔", deadline: "⏰", problem: "⚠" };
+async function loadNotifications() {
+  let data;
+  try { data = await api("/api/notifications"); } catch { return; }
+  const badge = $("#bell-badge");
+  if (data.count > 0) { badge.hidden = false; badge.textContent = data.count > 99 ? "99+" : data.count; }
+  else { badge.hidden = true; }
+  const list = $("#notif-list"); list.innerHTML = "";
+  if (!data.items.length) { list.innerHTML = `<div class="notif-empty">${t("notif.empty")}</div>`; return; }
+  data.items.slice(0, 30).forEach(it => {
+    const row = el("div", { class: "notif-item " + it.level });
+    row.append(el("span", { class: "ni-ic", text: NOTIF_ICON[it.type] || "•" }));
+    const body = el("div", { class: "ni-body" });
+    body.append(el("div", { class: "ni-title", text: `${t("notif." + it.type)}: ${it.title || ""}` }));
+    const meta = [it.account, (it.when || "").replace("T", " ").slice(0, 16)].filter(Boolean).join(" · ");
+    body.append(el("div", { class: "ni-meta", text: meta }));
+    row.append(body);
+    list.append(row);
+  });
+}
+$("#bell").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const p = $("#notif-panel"); p.hidden = !p.hidden; if (!p.hidden) loadNotifications();
+});
+document.addEventListener("click", (e) => {
+  const p = $("#notif-panel");
+  if (!p.hidden && !p.contains(e.target) && e.target.id !== "bell") p.hidden = true;
+});
+loadNotifications(); setInterval(loadNotifications, 5000);
+
 // --- dashboard -------------------------------------------------------------
 async function loadDashboard() {
-  const [stats, accounts, reminders] = await Promise.all([
-    api("/api/stats"), api("/api/stats/accounts"), api("/api/reminders"),
+  const [stats, analytics, trend, reminders] = await Promise.all([
+    api("/api/stats"), api("/api/analytics?hours=24"),
+    api("/api/analytics/trend?days=30"), api("/api/reminders"),
   ]);
   const tk = stats.tasks || {};
-  const cards = [
-    { k: "card.accounts", v: stats.accounts },
-    { k: "card.pending", v: tk.pending || 0, accent: true },
-    { k: "card.approved", v: tk.approved || 0 },
-    { k: "card.done", v: tk.done || 0 },
-  ];
+  const totalTasks = Object.values(tk).reduce((a, b) => a + b, 0);
+  const pendingPct = totalTasks ? Math.round(100 * (tk.pending || 0) / totalTasks) : 0;
+  const accs = analytics.accounts || [];
+  const used = accs.reduce((a, r) => a + (r.used_today || 0), 0);
+  const limit = accs.reduce((a, r) => a + (r.daily_limit || 0), 0);
+  const loadPct = limit ? Math.round(100 * used / limit) : 0;
+  const score = analytics.project ? analytics.project.score : null;
+  const problems = analytics.project ? analytics.project.problems : 0;
+
   const wrap = $("#summary-cards"); wrap.innerHTML = "";
-  cards.forEach(c => wrap.append(el("div", { class: "card" + (c.accent ? " accent" : "") },
-    el("div", { class: "k", text: t(c.k) }), el("div", { class: "v", text: String(c.v) }))));
+  wrap.append(metricCard({ label: t("m.accounts"), value: stats.accounts, sub: tf("m.accounts.sub", { n: (analytics.active || []).length }), color: TEAL, tip: t("m.accounts.tip") }));
+  wrap.append(metricCard({ label: t("m.pending"), value: tk.pending || 0, sub: tf("m.pending.sub", { n: pendingPct }), color: PINK, accent: true, tip: t("m.pending.tip") }));
+  wrap.append(metricCard({ label: t("m.eff"), value: score == null ? "—" : score, unit: score == null ? "" : "%", sub: tf("m.eff.sub", { n: problems }), color: scoreColor(score), tip: t("m.eff.tip") }));
+  wrap.append(metricCard({ label: t("m.load"), value: loadPct, unit: "%", sub: tf("m.load.sub", { a: used, b: limit }), color: BLUE, tip: t("m.load.tip") }));
+
+  $("#dash-activity").innerHTML = "";
+  $("#dash-activity").append(areaChart((analytics.activity || []).map(d => d.total), { color: PINK, h: 150 }));
+  $("#dash-trend").innerHTML = "";
+  $("#dash-trend").append(areaChart(trend.map(d => d.score), { color: TEAL, h: 150, maxY: 100 }));
+
   renderReminders(reminders);
-  renderAccountsOverview(accounts);
+  renderAccountsOverview(accs);
 }
 function renderReminders(rows) {
   const wrap = $("#reminders-list");
@@ -112,9 +162,13 @@ function renderAccountsOverview(rows) {
   const wrap = $("#dashboard-accounts");
   if (!rows.length) { wrap.innerHTML = `<div class="empty">${t("empty.accountsShort")}</div>`; return; }
   const table = el("table");
-  table.append(headRow(["col.account", "col.handle", "col.today", "col.pending", "col.done"]));
-  rows.forEach(r => table.append(el("tr", {}, td(r.name), td(r.handle || "—"),
-    tdLimit(r.used_today, r.daily_limit), td(String(r.counts.pending || 0)), td(String(r.counts.done || 0)))));
+  table.append(headRow(["col.account", "col.handle", "col.today", "col.score", "col.state"]));
+  rows.forEach(r => {
+    const score = el("td", {}); const chip = el("span", { class: "score-chip", text: r.score == null ? "—" : r.score + "%" });
+    chip.style.color = scoreColor(r.score); score.append(chip);
+    table.append(el("tr", {}, td(r.name), td(r.handle || "—"), tdLimit(r.used_today, r.daily_limit),
+      score, el("td", {}, el("span", { class: "state " + r.state, text: t("state." + r.state) }))));
+  });
   wrap.innerHTML = ""; wrap.append(table);
 }
 
@@ -256,6 +310,49 @@ function barChart(values, w = 220, h = 42) {
   return s;
 }
 function scoreColor(score) { if (score == null) return "var(--dim)"; if (score >= 85) return "var(--ok)"; if (score >= 60) return "var(--warn)"; return "var(--err)"; }
+function smoothPath(pts) {
+  if (pts.length < 2) return "";
+  let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+function areaChart(values, { w = 440, h = 150, color = PINK, maxY = null } = {}) {
+  const n = values.length;
+  const nz = values.filter(v => v != null);
+  const mx = maxY != null ? maxY : Math.max(1, ...nz);
+  const pts = [];
+  values.forEach((v, i) => { if (v != null) pts.push([n === 1 ? w / 2 : (i / (n - 1)) * (w - 10) + 5, h - 12 - (v / mx) * (h - 24)]); });
+  const s = svg("svg", { viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", width: "100%", height: h, class: "area-chart" });
+  [0, 0.5, 1].forEach(g => { const y = (h - 12 - g * (h - 24)).toFixed(1); s.append(svg("line", { x1: 0, x2: w, y1: y, y2: y, class: "grid" })); });
+  if (pts.length < 2) return s;
+  const gid = "g" + Math.random().toString(36).slice(2, 7);
+  const defs = svg("defs", {}); const lg = svg("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
+  lg.append(svg("stop", { offset: "0%", "stop-color": color, "stop-opacity": "0.45" }));
+  lg.append(svg("stop", { offset: "100%", "stop-color": color, "stop-opacity": "0.02" }));
+  defs.append(lg); s.append(defs);
+  const line = smoothPath(pts);
+  s.append(svg("path", { d: line + ` L${pts[pts.length - 1][0].toFixed(1)} ${h - 12} L${pts[0][0].toFixed(1)} ${h - 12} Z`, fill: `url(#${gid})`, stroke: "none" }));
+  s.append(svg("path", { d: line, fill: "none", stroke: color, "stroke-width": "2.5", "stroke-linejoin": "round" }));
+  s.append(svg("circle", { cx: pts[pts.length - 1][0].toFixed(1), cy: pts[pts.length - 1][1].toFixed(1), r: 3.5, fill: color }));
+  return s;
+}
+function metricCard({ label, value, unit, sub, color, accent, tip }) {
+  const card = el("div", { class: "metric" + (accent ? " accent" : ""), title: tip || "" });
+  card.append(el("div", { class: "m-k", text: label }));
+  const v = el("div", { class: "m-v" });
+  const num = el("span", { class: "m-num", text: String(value) });
+  if (color) num.style.color = color;
+  v.append(num);
+  if (unit) v.append(el("span", { class: "m-unit", text: unit }));
+  card.append(v);
+  card.append(el("div", { class: "m-sub", text: sub || "" }));
+  return card;
+}
 function lineChart(points, w = 900, h = 120) {
   // points: [{date, score|null}]. Draws an area+line for available scores.
   const s = svg("svg", { viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", width: "100%", height: h, class: "line-chart" });

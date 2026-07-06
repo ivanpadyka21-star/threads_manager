@@ -76,6 +76,10 @@ def create_app(
     def reminders():
         return jsonify(db.list_reminders())
 
+    @app.get("/api/notifications")
+    def notifications():
+        return jsonify(db.notifications())
+
     # -- analytics ----------------------------------------------------------
     @app.get("/api/analytics")
     def analytics():

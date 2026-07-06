@@ -154,6 +154,17 @@ def test_ai_stats(store):
     assert ai["success_rate"] == 50.0
 
 
+def test_notifications(store):
+    acc = store.add_account(name="A")
+    # a past reminder (due) + a recorded problem
+    store.add_task(account_id=acc["id"], title="Ping", reminder="2000-01-01T00:00")
+    store.record_event("run.error", "boom", acc["id"])
+    notif = store.notifications()
+    types = {i["type"] for i in notif["items"]}
+    assert "reminder" in types and "problem" in types
+    assert notif["count"] >= 2  # due reminder + problem both count
+
+
 def test_effectiveness_trend(store):
     acc = store.add_account(name="A")
     task = store.add_task(account_id=acc["id"], title="x")
