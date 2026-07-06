@@ -55,7 +55,11 @@ def main() -> None:
     # Imported here: pythreads reads SSL env at import time.
     from pythreads.threads import Threads
 
-    auth_url, state = Threads.authorization_url()
+    # Only request scopes the app actually has, or Threads returns invalid_scope.
+    scopes_env = os.getenv("E2E_THREADS_SCOPES", "threads_basic,threads_content_publish")
+    scopes = [s.strip() for s in scopes_env.split(",") if s.strip()]
+    config = Threads.load_configuration(scopes=scopes)
+    auth_url, state = Threads.authorization_url(config=config)
 
     parsed = urlparse(redirect)
     host = parsed.hostname or "localhost"
@@ -86,11 +90,11 @@ def main() -> None:
     context.load_cert_chain(certfile=cert, keyfile=key)
     httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
 
-    print("\n>>> Opening the Threads authorization page in your browser…")
+    print("\n>>> Opening the Threads authorization page in your browser...")
     print("    If it doesn't open, paste this URL manually:\n")
     print("   ", auth_url, "\n")
     print(f">>> Waiting for the redirect on {redirect}")
-    print("    (Your browser may warn about the self-signed localhost cert — accept it.)\n")
+    print("    (Your browser may warn about the self-signed localhost cert - accept it.)\n")
     try:
         webbrowser.open(auth_url)
     except Exception:  # noqa: BLE001
@@ -102,14 +106,14 @@ def main() -> None:
     if not callback_url:
         raise SystemExit("No callback captured — authorization was not completed.")
 
-    print(">>> Exchanging the code for a long-lived token…")
-    credentials = Threads.complete_authorization(callback_url, state)
+    print(">>> Exchanging the code for a long-lived token...")
+    credentials = Threads.complete_authorization(callback_url, state, config=config)
 
     output = os.getenv("THREADS_CREDENTIALS_FILE", DEFAULT_OUTPUT)
     with open(output, "w", encoding="utf-8") as f:
         f.write(credentials.to_json())
     print(f"\n[OK] Credentials saved to {output}")
-    print("     The dashboard Settings tab should now show 'Connected ✓'.")
+    print("     The dashboard Settings tab should now show 'Connected'.")
 
 
 if __name__ == "__main__":
