@@ -44,7 +44,7 @@ let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "accounts") loadAccounts();
-  if (name === "tasks") { loadAccountOptions(); loadTasks(); }
+  if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
   if (name === "audit") loadAudit();
@@ -209,6 +209,16 @@ async function loadAccountOptions() {
   });
 }
 
+// --- AI quota (local estimate of Gemini usage) -----------------------------
+async function loadAiUsage() {
+  const wrap = $("#ai-quota"); if (!wrap) return;
+  let u; try { u = await api("/api/ai/usage"); } catch { return; }
+  const dayLow = u.remaining_today <= 0, minLow = u.remaining_minute <= 0;
+  wrap.className = "ai-quota" + (dayLow ? " danger" : (minLow ? " warn" : ""));
+  wrap.textContent =
+    `${t("ai.quota")}: ${t("ai.today")} ${u.used_today}/${u.rpd} · ${t("ai.min")} ${u.used_minute}/${u.rpm}`;
+}
+
 // --- batch of scheduled posts ----------------------------------------------
 $("#batch-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -228,6 +238,7 @@ $("#batch-form").addEventListener("submit", async (e) => {
     renderBatchPreview(res.batch_id, res.tasks);
   } catch (err) { alert("Error: " + err); }
   btn.disabled = false; btn.textContent = label;
+  loadAiUsage();
 });
 
 function renderBatchPreview(batchId, tasks) {
@@ -288,7 +299,7 @@ async function publishTask(id) {
     const res = await jpost(`/api/tasks/${id}/publish`);
     alert(t("th.published") + " (id " + res.published_id + ")");
   } catch (err) { alert("⚠ " + err); }
-  loadTasks(); if (currentTab === "dashboard") loadDashboard();
+  loadTasks(); loadAiUsage(); if (currentTab === "dashboard") loadDashboard();
 }
 async function loadThreadsStatus() {
   const wrap = $("#threads-status"); if (!wrap) return;

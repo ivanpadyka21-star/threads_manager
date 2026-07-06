@@ -183,6 +183,21 @@ def test_notifications_route(client):
     assert any(i["type"] == "reminder" for i in body["items"])
 
 
+def test_ai_usage_route(client):
+    acc = _add_account(client)
+    # a generation event via the AI execute path (mock the agent)
+    from unittest.mock import MagicMock, patch
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "title": "x", "payload": "p"}).get_json()
+    client.post(f"/api/tasks/{task['id']}/approve")
+    fake = MagicMock(); fake.generate_response.return_value = "draft"
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        client.post(f"/api/tasks/{task['id']}/execute")
+    res = client.get("/api/ai/usage")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["used_today"] >= 1 and body["rpd"] == 20 and body["rpm"] == 5
+
+
 def test_analytics_trend_route(client):
     res = client.get("/api/analytics/trend?days=10")
     assert res.status_code == 200

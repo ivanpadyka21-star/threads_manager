@@ -146,6 +146,18 @@ def test_accounts_effectiveness_state(store):
     assert isinstance(rows[0]["sparkline"], list)
 
 
+def test_ai_usage(store):
+    store.record_event("ai.generate", "a")
+    store.record_event("ai.generate", "b")
+    store.record_event("ai.error", "boom")
+    u = store.ai_usage(rpm=5, rpd=20)
+    assert u["used_today"] == 2
+    assert u["remaining_today"] == 18
+    assert u["used_minute"] == 2
+    assert u["remaining_minute"] == 3
+    assert u["errors_today"] == 1
+
+
 def test_ai_stats(store):
     store.record_event("ai.generate", "q")
     store.record_event("ai.error", "fail")

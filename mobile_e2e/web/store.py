@@ -666,6 +666,38 @@ class Store:
         rate = round(100 * gen / (gen + err), 1) if (gen + err) else None
         return {"generations": gen, "errors": err, "success_rate": rate}
 
+    def ai_usage(self, rpm: int = 5, rpd: int = 20) -> dict:
+        """Estimate AI request usage from our own audit log.
+
+        Counts successful ``ai.generate`` calls today (vs the daily limit) and
+        in the last 60 seconds (vs the per-minute limit). This is a *local*
+        estimate of what this app sent — it cannot see calls made elsewhere with
+        the same key, and Google does not expose remaining quota via this
+        endpoint.
+        """
+        today = date.today().isoformat()
+        minute_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(timespec="seconds")
+        with self._lock:
+            used_today = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM audit WHERE action = 'ai.generate' "
+                "AND substr(ts,1,10) = ?", (today,),
+            ).fetchone()["n"]
+            used_minute = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM audit WHERE action = 'ai.generate' "
+                "AND ts >= ?", (minute_cutoff,),
+            ).fetchone()["n"]
+            errors_today = self._conn.execute(
+                "SELECT COUNT(*) AS n FROM audit WHERE action = 'ai.error' "
+                "AND substr(ts,1,10) = ?", (today,),
+            ).fetchone()["n"]
+        return {
+            "used_today": used_today, "rpd": rpd,
+            "remaining_today": max(0, rpd - used_today),
+            "used_minute": used_minute, "rpm": rpm,
+            "remaining_minute": max(0, rpm - used_minute),
+            "errors_today": errors_today,
+        }
+
     def analytics_overview(self, hours: float = 24) -> dict:
         """Everything the Analytics tab needs in one call (real-time friendly)."""
         accounts = self.accounts_effectiveness(hours=hours)

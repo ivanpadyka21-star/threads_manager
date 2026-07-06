@@ -101,6 +101,7 @@ const TRANSLATIONS = {
     "batch.hint": "ИИ создаст черновики. Посмотрите и подтвердите пакет — публикация по расписанию.",
     "batch.preview": "Черновики пакета", "batch.approve": "Подтвердить и запланировать",
     "batch.scheduled": "Запланировано постов: {n}", "batch.at": "в",
+    "ai.quota": "Квота Gemini", "ai.today": "сегодня", "ai.min": "за минуту",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -200,6 +201,7 @@ const TRANSLATIONS = {
     "batch.hint": "The AI drafts each post. Review and approve the batch — it publishes on schedule.",
     "batch.preview": "Batch drafts", "batch.approve": "Approve & schedule",
     "batch.scheduled": "Scheduled posts: {n}", "batch.at": "at",
+    "ai.quota": "Gemini quota", "ai.today": "today", "ai.min": "per minute",
   },
 };
 
