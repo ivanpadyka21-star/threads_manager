@@ -37,13 +37,14 @@ function tdLimit(used, limit) {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", runs: "nav.runs", stats: "nav.stats", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "accounts") loadAccounts();
   if (name === "tasks") { loadAccountOptions(); loadTasks(); }
   if (name === "stats") loadStats();
+  if (name === "analytics") loadAnalytics(true);
   if (name === "audit") loadAudit();
 }
 function showTab(name) {
@@ -229,6 +230,100 @@ async function loadAudit() {
       el("span", { class: "audit-acc", text: r.account_id != null ? "#" + r.account_id : "" })));
   });
 }
+
+// --- charts (inline SVG, dependency-free) ----------------------------------
+function svg(tag, attrs) { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; }
+function barChart(values, w = 220, h = 42) {
+  const max = Math.max(1, ...values);
+  const n = values.length; const gap = 2; const bw = (w - gap * (n - 1)) / n;
+  const s = svg("svg", { viewBox: `0 0 ${w} ${h}`, width: w, height: h, class: "chart" });
+  values.forEach((v, i) => {
+    const bh = Math.max(v > 0 ? 3 : 1, Math.round((v / max) * (h - 4)));
+    const x = i * (bw + gap); const y = h - bh;
+    s.append(svg("rect", { x: x.toFixed(1), y: y.toFixed(1), width: bw.toFixed(1), height: bh, rx: 1.5, class: v > 0 ? "bar on" : "bar off" }));
+  });
+  return s;
+}
+function scoreColor(score) { if (score == null) return "var(--dim)"; if (score >= 85) return "var(--ok)"; if (score >= 60) return "var(--warn)"; return "var(--err)"; }
+
+// --- analytics -------------------------------------------------------------
+let anAccounts = [];
+async function loadAnalytics(full) {
+  const a = await api("/api/analytics");
+  renderAnalyticsCards(a);
+  renderAnalyticsAccounts(a.accounts);
+  if (full) renderPicker(a.accounts);
+}
+function renderAnalyticsCards(a) {
+  const p = a.project || {};
+  const cards = [
+    { k: "an.score", v: p.score == null ? "—" : p.score + "%", color: scoreColor(p.score), accent: true },
+    { k: "an.problems", v: p.problems || 0 },
+    { k: "an.ai_rate", v: a.ai && a.ai.success_rate != null ? a.ai.success_rate + "%" : "—" },
+    { k: "an.active", v: (a.active || []).length + " / " + (a.accounts || []).length },
+  ];
+  const wrap = $("#analytics-cards"); wrap.innerHTML = "";
+  cards.forEach(c => {
+    const v = el("div", { class: "v", text: String(c.v) });
+    if (c.color) v.style.color = c.color;
+    wrap.append(el("div", { class: "card" + (c.accent ? " accent" : "") }, el("div", { class: "k", text: t(c.k) }), v));
+  });
+}
+function renderAnalyticsAccounts(rows) {
+  const wrap = $("#analytics-accounts");
+  if (!rows.length) { wrap.innerHTML = `<div class="empty">${t("empty.data")}</div>`; return; }
+  const table = el("table");
+  table.append(headRow(["col.account", "col.state", "col.score", "col.problems", "col.events", "col.today", "col.activity"]));
+  const tbody = el("tbody");
+  rows.forEach(r => {
+    const score = el("td", {}); const chip = el("span", { class: "score-chip", text: r.score == null ? "—" : r.score + "%" });
+    chip.style.color = scoreColor(r.score); score.append(chip);
+    const spark = el("td", {}); spark.append(barChart(r.sparkline || [], 200, 34));
+    const tr = el("tr", { class: "an-row", onclick: () => toggleAccountDetail(tr, r.id) },
+      td(r.name), el("td", {}, el("span", { class: "state " + r.state, text: t("state." + r.state) })),
+      score, td(String(r.problems)), td(String(r.events)), tdLimit(r.used_today, r.daily_limit), spark);
+    tbody.append(tr);
+  });
+  table.append(tbody); wrap.innerHTML = ""; wrap.append(table);
+}
+async function toggleAccountDetail(tr, id) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains("detail-row")) { next.remove(); return; }
+  const data = await api(`/api/accounts/${id}/activity?days=14`);
+  const cell = el("td", { colspan: 7, class: "detail-cell" });
+  cell.append(barChart((data.activity || []).map(d => d.total), 520, 90));
+  const errs = (data.effectiveness && data.effectiveness.recent_errors) || [];
+  if (errs.length) {
+    cell.append(el("div", { class: "det-title", text: t("an.recent_errors") }));
+    errs.slice(0, 6).forEach(e => cell.append(el("div", { class: "det-err", text: `${(e.ts||'').slice(0,16)} · ${e.action} · ${e.detail||''}` })));
+  }
+  const dr = el("tr", { class: "detail-row" }, cell);
+  tr.after(dr);
+}
+function renderPicker(rows) {
+  const wrap = $("#an-picker"); wrap.innerHTML = "";
+  rows.forEach(r => {
+    const id = "pk_" + r.id;
+    const chip = el("label", { class: "chip" }, el("input", { type: "checkbox", value: String(r.id), id }), document.createTextNode(" " + r.name));
+    wrap.append(chip);
+  });
+}
+function pickedAccounts() { return $$("#an-picker input:checked").map(i => Number(i.value)); }
+async function runAnalyticsAI(useAI) {
+  const out = $("#an-output"); out.textContent = useAI ? t("an.thinking") : "…";
+  const body = { account_ids: pickedAccounts(), question: $("#an-question").value };
+  try {
+    const res = await jpost(useAI ? "/api/analytics/ai" : "/api/analytics/summary", body);
+    out.textContent = useAI ? ((res.answer || res.error || "") + "\n\n— — —\n" + (res.data || "")) : (res.data || "");
+  } catch (err) { out.textContent = String(err); }
+}
+$("#an-run-ai").addEventListener("click", () => runAnalyticsAI(true));
+$("#an-run-data").addEventListener("click", () => runAnalyticsAI(false));
+
+// Real-time refresh while on the Analytics tab.
+setInterval(() => {
+  if (currentTab === "analytics" && $("#analytics-auto") && $("#analytics-auto").checked) loadAnalytics(false);
+}, 4000);
 
 // --- runs (workflow) -------------------------------------------------------
 let polling = null;

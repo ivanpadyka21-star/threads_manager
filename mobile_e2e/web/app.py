@@ -13,9 +13,10 @@ import os
 
 from flask import Flask, jsonify, render_template, request
 
+from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
-from mobile_e2e.web.jobs import JobManager
+from mobile_e2e.web.jobs import Job, JobManager
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
 
@@ -34,8 +35,17 @@ def create_app(
     # manual restart (Python changes are handled by the reloader in main()).
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
-    jobs = job_manager or JobManager()
     db = store or Store(os.getenv("E2E_WEB_DB", _DEFAULT_DB))
+
+    def _record_run(job: Job) -> None:
+        ok = job.status == "done" and (job.result or {}).get("ok")
+        if ok:
+            db.record_event("run.ok", "workflow completed", job.account_id, level="ok")
+        else:
+            detail = (job.error or (job.result or {}).get("error") or "run failed")
+            db.record_event("run.error", str(detail)[:200], job.account_id, level="error")
+
+    jobs = job_manager or JobManager(on_done=_record_run)
 
     # -- pages --------------------------------------------------------------
     @app.get("/")
@@ -65,6 +75,49 @@ def create_app(
     @app.get("/api/reminders")
     def reminders():
         return jsonify(db.list_reminders())
+
+    # -- analytics ----------------------------------------------------------
+    @app.get("/api/analytics")
+    def analytics():
+        hours = request.args.get("hours", default=24, type=float)
+        return jsonify(db.analytics_overview(hours=hours))
+
+    @app.get("/api/accounts/<int:account_id>/activity")
+    def account_activity(account_id: int):
+        days = request.args.get("days", default=14, type=int)
+        return jsonify({
+            "activity": db.activity_daily(account_id=account_id, days=days),
+            "effectiveness": db.effectiveness(account_id=account_id),
+        })
+
+    @app.post("/api/analytics/summary")
+    def analytics_summary():
+        data = request.get_json(silent=True) or {}
+        account_ids = data.get("account_ids") or None
+        hours = float(data.get("hours", 24))
+        return jsonify({"data": db.analytics_summary_text(account_ids, hours)})
+
+    @app.post("/api/analytics/ai")
+    def analytics_ai():
+        data = request.get_json(silent=True) or {}
+        account_ids = data.get("account_ids") or None
+        hours = float(data.get("hours", 24))
+        question = (data.get("question") or "").strip() or (
+            "Summarise load, problems, what works well, and what to improve."
+        )
+        summary = db.analytics_summary_text(account_ids, hours)
+        agent = AIAgent(
+            "You are an analytics assistant for an SMM operations dashboard. "
+            "Be concise and practical: highlight load, problems, what works well, "
+            "and concrete suggestions on what to improve or reduce.",
+        )
+        try:
+            answer = agent.generate_response(f"{question}\n\nData:\n{summary}")
+            db.record_event("ai.generate", "analytics query", level="ok")
+            return jsonify({"answer": answer, "data": summary})
+        except Exception as exc:  # noqa: BLE001 - degrade gracefully to raw data
+            db.record_event("ai.error", str(exc)[:200], level="error")
+            return jsonify({"answer": None, "data": summary, "error": str(exc)})
 
     # -- accounts -----------------------------------------------------------
     @app.get("/api/accounts")
@@ -153,7 +206,7 @@ def create_app(
                 data["proxy_string"] = account.get("proxy_string", "")
         req = WorkflowRequest.from_dict(data)
         try:
-            job = jobs.submit(req)
+            job = jobs.submit(req, account_id=int(account_id) if account_id else None)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify({"job_id": job.id}), 202

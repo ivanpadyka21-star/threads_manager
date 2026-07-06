@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from mobile_e2e.web.service import WebService, WorkflowRequest
 
@@ -24,6 +24,7 @@ class Job:
     logs: List[str] = field(default_factory=list)
     result: Optional[dict] = None
     error: Optional[str] = None
+    account_id: Optional[int] = None
 
     def snapshot(self) -> dict:
         """A JSON-serialisable copy safe to hand to the browser."""
@@ -39,12 +40,18 @@ class Job:
 class JobManager:
     """Creates, runs and tracks background jobs."""
 
-    def __init__(self, service: Optional[WebService] = None) -> None:
+    def __init__(
+        self,
+        service: Optional[WebService] = None,
+        on_done: Optional[Callable[[Job], None]] = None,
+    ) -> None:
         self._service = service or WebService()
         self._jobs: Dict[str, Job] = {}
         self._lock = threading.Lock()
+        # Called when a job finishes (used to record analytics events).
+        self._on_done = on_done
 
-    def submit(self, req: WorkflowRequest) -> Job:
+    def submit(self, req: WorkflowRequest, account_id: Optional[int] = None) -> Job:
         """Validate the request, start a background run and return the job.
 
         Raises:
@@ -53,7 +60,7 @@ class JobManager:
         # Validate synchronously so bad input becomes an immediate 400.
         self._service.validate(req)
 
-        job = Job(id=uuid.uuid4().hex)
+        job = Job(id=uuid.uuid4().hex, account_id=account_id)
         with self._lock:
             self._jobs[job.id] = job
 
@@ -77,6 +84,11 @@ class JobManager:
             with self._lock:
                 job.error = f"{type(exc).__name__}: {exc}"
                 job.status = "error"
+        if self._on_done is not None:
+            try:
+                self._on_done(job)
+            except Exception:  # noqa: BLE001 - analytics must not break a run
+                pass
 
     def get(self, job_id: str) -> Optional[Job]:
         with self._lock:

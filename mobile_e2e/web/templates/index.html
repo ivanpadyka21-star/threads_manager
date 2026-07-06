@@ -23,6 +23,7 @@
         <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
+        <button class="nav-item" data-tab="analytics"><span>◈</span> <em data-i18n="nav.analytics">Аналитика</em></button>
         <button class="nav-item" data-tab="audit"><span>≣</span> <em data-i18n="nav.audit">Журнал</em></button>
         <button class="nav-item" data-tab="settings"><span>⚙</span> <em data-i18n="nav.settings">Настройки</em></button>
       </nav>
@@ -174,6 +175,29 @@
         <div class="panel">
           <div class="panel-head"><h2 data-i18n="stats.title">Статистика по аккаунтам</h2></div>
           <div id="stats-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Analytics -->
+      <section class="tab" id="tab-analytics">
+        <div class="cards" id="analytics-cards"></div>
+        <div class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="an.accounts">Эффективность по аккаунтам</h2>
+            <label class="auto"><input type="checkbox" id="analytics-auto" checked> <span data-i18n="an.auto">Реальное время</span></label>
+          </div>
+          <div id="analytics-accounts" class="table-wrap"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="an.ai">ИИ-аналитик</h2></div>
+          <div class="hint" data-i18n="an.pick" style="margin-bottom:8px">Выберите аккаунты (пусто = все)</div>
+          <div id="an-picker" class="picker"></div>
+          <textarea id="an-question" rows="2" data-i18n-ph="an.q.ph" placeholder="Спросите про нагрузку, проблемы, что улучшить…"></textarea>
+          <div class="form-actions" style="margin-top:10px">
+            <button type="button" id="an-run-ai" data-i18n="an.analyze">Анализировать (ИИ)</button>
+            <button type="button" id="an-run-data" class="ghost" data-i18n="an.data">Собрать данные</button>
+          </div>
+          <pre id="an-output" class="an-output"></pre>
         </div>
       </section>
 

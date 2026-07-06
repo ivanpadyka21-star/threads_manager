@@ -111,3 +111,53 @@ def test_stats_and_per_account(store):
     assert stats["pending"] == 1
     per = store.per_account_stats()
     assert per[0]["total_tasks"] == 1
+
+
+# -- analytics --------------------------------------------------------------
+def test_effectiveness_score(store):
+    acc = store.add_account(name="A", daily_limit=99)
+    t1 = store.add_task(account_id=acc["id"], title="a")
+    store.approve_task(t1["id"])          # ok
+    store.record_event("run.error", "boom", acc["id"])  # error (level from map)
+    eff = store.effectiveness(hours=24)
+    # There are ok/info events and one error -> a score strictly between 0 and 100.
+    assert eff["score"] is not None
+    assert 0 < eff["score"] < 100
+    assert eff["problems"] == 1
+    assert len(eff["recent_errors"]) == 1
+
+
+def test_effectiveness_none_without_activity(store):
+    assert store.effectiveness(hours=24)["score"] is None
+
+
+def test_activity_daily_buckets(store):
+    acc = store.add_account(name="A")
+    store.add_task(account_id=acc["id"], title="x")
+    buckets = store.activity_daily(account_id=acc["id"], days=14)
+    assert len(buckets) == 14
+    assert buckets[-1]["total"] >= 1  # today has activity
+
+
+def test_accounts_effectiveness_state(store):
+    acc = store.add_account(name="A")  # account.create logs an event -> active
+    rows = store.accounts_effectiveness(hours=24)
+    assert rows[0]["state"] == "active"
+    assert isinstance(rows[0]["sparkline"], list)
+
+
+def test_ai_stats(store):
+    store.record_event("ai.generate", "q")
+    store.record_event("ai.error", "fail")
+    ai = store.ai_stats(hours=24)
+    assert ai["generations"] == 1 and ai["errors"] == 1
+    assert ai["success_rate"] == 50.0
+
+
+def test_analytics_overview_and_summary(store):
+    acc = store.add_account(name="Alpha")
+    store.add_task(account_id=acc["id"], title="x")
+    overview = store.analytics_overview(hours=24)
+    assert "project" in overview and "accounts" in overview
+    text = store.analytics_summary_text([acc["id"]], hours=24)
+    assert "Alpha" in text and "effectiveness" in text.lower()

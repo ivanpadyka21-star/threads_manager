@@ -123,6 +123,56 @@ def test_reminders_endpoint(client):
     assert data[0]["status"] == "pending"
 
 
+def test_analytics_overview_route(client):
+    acc = _add_account(client)
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "title": "x"}).get_json()
+    client.post(f"/api/tasks/{task['id']}/approve")
+    res = client.get("/api/analytics")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert "project" in body and "accounts" in body and "ai" in body
+
+
+def test_account_activity_route(client):
+    acc = _add_account(client)
+    res = client.get(f"/api/accounts/{acc['id']}/activity?days=7")
+    assert res.status_code == 200
+    assert len(res.get_json()["activity"]) == 7
+
+
+def test_analytics_summary_route(client):
+    acc = _add_account(client, name="Beta")
+    res = client.post("/api/analytics/summary", json={"account_ids": [acc["id"]]})
+    assert res.status_code == 200
+    assert "Beta" in res.get_json()["data"]
+
+
+def test_analytics_ai_route(client):
+    from unittest.mock import MagicMock, patch
+    acc = _add_account(client, name="Gamma")
+    fake = MagicMock()
+    fake.generate_response.return_value = "Load is fine; one error to fix."
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        res = client.post("/api/analytics/ai", json={"account_ids": [acc["id"]], "question": "How are we?"})
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["answer"] == "Load is fine; one error to fix."
+    assert "Gamma" in body["data"]
+
+
+def test_analytics_ai_route_degrades(client):
+    """If the AI call fails, the endpoint still returns computed data."""
+    from unittest.mock import MagicMock, patch
+    _add_account(client, name="Delta")
+    fake = MagicMock()
+    fake.generate_response.side_effect = RuntimeError("no key")
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        res = client.post("/api/analytics/ai", json={})
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["answer"] is None and "error" in body and body["data"]
+
+
 def test_run_uses_account_proxy(client):
     """POST /api/run should fall back to the account's stored proxy."""
     store = Store(":memory:")

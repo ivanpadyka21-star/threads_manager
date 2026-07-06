@@ -15,18 +15,35 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from typing import Dict, List, Optional
 from pathlib import Path
-from typing import List, Optional
 
 # Task lifecycle states.
 TASK_STATES = ("pending", "approved", "done", "failed", "rejected")
 # States that count against an account's daily limit.
 _COUNTS_AGAINST_LIMIT = ("approved", "done")
 
+# Severity levels attached to audit events, used by the analytics layer.
+# ok = a good, completed action; info = neutral; warn = a soft problem;
+# error = a bug / failed or problematic action.
+LEVELS = ("ok", "info", "warn", "error")
+# How each action maps to a severity for effectiveness scoring.
+_ACTION_LEVEL = {
+    "task.approve": "ok", "task.done": "ok", "task.create": "info",
+    "task.reject": "warn", "task.rejected": "warn", "task.failed": "error",
+    "task.delete": "info",
+    "account.create": "info", "account.update": "info", "account.delete": "warn",
+    "run.ok": "ok", "run.error": "error", "ai.generate": "ok", "ai.error": "error",
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _cutoff(hours: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
 
 
 class RateLimitError(Exception):
@@ -87,6 +104,7 @@ class Store:
             )
         # Migrate older databases that predate newer columns.
         self._ensure_column("tasks", "reminder", "TEXT")
+        self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
 
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
         with self._lock, self._conn:
@@ -296,12 +314,23 @@ class Store:
         return int(row["n"]) if row else 0
 
     # -- audit & stats ------------------------------------------------------
-    def log(self, action: str, detail: str = "", account_id: Optional[int] = None) -> None:
+    def log(
+        self,
+        action: str,
+        detail: str = "",
+        account_id: Optional[int] = None,
+        level: Optional[str] = None,
+    ) -> None:
+        """Append an audit event. ``level`` defaults from the action name."""
+        lvl = level or _ACTION_LEVEL.get(action, "info")
         with self._lock, self._conn:
             self._conn.execute(
-                "INSERT INTO audit (ts, account_id, action, detail) VALUES (?, ?, ?, ?)",
-                (_now(), account_id, action, detail),
+                "INSERT INTO audit (ts, account_id, action, detail, level) VALUES (?, ?, ?, ?, ?)",
+                (_now(), account_id, action, detail, lvl),
             )
+
+    # Public alias for recording an analytics event from the app layer.
+    record_event = log
 
     def list_audit(self, limit: int = 100) -> List[dict]:
         with self._lock:
@@ -349,6 +378,155 @@ class Store:
                 }
             )
         return result
+
+    # -- analytics ----------------------------------------------------------
+    def activity_daily(self, account_id: Optional[int] = None, days: int = 14) -> List[dict]:
+        """Daily activity buckets for the last ``days`` (for charts/sparklines).
+
+        Returns one entry per day (oldest first) with total events and error
+        count, so a sparkline can show load and problems over time.
+        """
+        start = (date.today() - timedelta(days=days - 1))
+        buckets: Dict[str, dict] = {}
+        for i in range(days):
+            d = (start + timedelta(days=i)).isoformat()
+            buckets[d] = {"date": d, "total": 0, "errors": 0}
+        clause = "substr(ts,1,10) >= ?"
+        params: list = [start.isoformat()]
+        if account_id is not None:
+            clause += " AND account_id = ?"
+            params.append(account_id)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT substr(ts,1,10) AS d, level, COUNT(*) AS n "
+                f"FROM audit WHERE {clause} GROUP BY d, level", params
+            ).fetchall()
+        for r in rows:
+            b = buckets.get(r["d"])
+            if b is None:
+                continue
+            b["total"] += r["n"]
+            if r["level"] == "error":
+                b["errors"] += r["n"]
+        return list(buckets.values())
+
+    def effectiveness(self, hours: float = 24, account_id: Optional[int] = None) -> dict:
+        """Compute an explainable effectiveness score over a rolling window.
+
+        Score = 100 * successes / (successes + weighted_problems), where
+        successes are ``ok``/``info`` events and weighted_problems weigh errors
+        fully and warnings partially. ``None`` when there is no activity.
+        """
+        cutoff = _cutoff(hours)
+        clause = "ts >= ?"
+        params: list = [cutoff]
+        if account_id is not None:
+            clause += " AND account_id = ?"
+            params.append(account_id)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT level, COUNT(*) AS n FROM audit WHERE {clause} GROUP BY level",
+                params,
+            ).fetchall()
+            recent_errors = self._conn.execute(
+                f"SELECT ts, action, detail, account_id FROM audit "
+                f"WHERE {clause} AND level = 'error' ORDER BY id DESC LIMIT 10",
+                params,
+            ).fetchall()
+        counts = {lvl: 0 for lvl in LEVELS}
+        for r in rows:
+            counts[r["level"]] = r["n"]
+        successes = counts["ok"] + counts["info"]
+        problems = counts["error"] * 1.0 + counts["warn"] * 0.4
+        total = successes + counts["warn"] + counts["error"]
+        score = None
+        if successes + problems > 0:
+            score = round(100 * successes / (successes + problems), 1)
+        return {
+            "window_hours": hours,
+            "score": score,
+            "counts": counts,
+            "total_events": total,
+            "problems": counts["error"],
+            "warnings": counts["warn"],
+            "recent_errors": [dict(r) for r in recent_errors],
+        }
+
+    def accounts_effectiveness(self, hours: float = 24) -> List[dict]:
+        """Per-account effectiveness + activity classification."""
+        cutoff = _cutoff(hours)
+        result = []
+        for acc in self.list_accounts():
+            eff = self.effectiveness(hours=hours, account_id=acc["id"])
+            with self._lock:
+                ever = self._conn.execute(
+                    "SELECT COUNT(*) AS n FROM audit WHERE account_id = ?", (acc["id"],)
+                ).fetchone()["n"]
+            active = eff["total_events"] > 0
+            result.append({
+                "id": acc["id"], "name": acc["name"], "handle": acc["handle"],
+                "tone": acc["tone"], "has_proxy": bool(acc["proxy_string"]),
+                "used_today": acc["used_today"], "daily_limit": acc["daily_limit"],
+                "score": eff["score"], "problems": eff["problems"],
+                "events": eff["total_events"],
+                "state": "active" if active else ("idle" if ever else "new"),
+                "sparkline": [b["total"] for b in self.activity_daily(acc["id"], days=14)],
+            })
+        return result
+
+    def ai_stats(self, hours: float = 24) -> dict:
+        """How the AI agent is doing over the window."""
+        cutoff = _cutoff(hours)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT action, COUNT(*) AS n FROM audit "
+                "WHERE ts >= ? AND action LIKE 'ai.%' GROUP BY action", (cutoff,)
+            ).fetchall()
+        counts = {r["action"]: r["n"] for r in rows}
+        gen = counts.get("ai.generate", 0)
+        err = counts.get("ai.error", 0)
+        rate = round(100 * gen / (gen + err), 1) if (gen + err) else None
+        return {"generations": gen, "errors": err, "success_rate": rate}
+
+    def analytics_overview(self, hours: float = 24) -> dict:
+        """Everything the Analytics tab needs in one call (real-time friendly)."""
+        accounts = self.accounts_effectiveness(hours=hours)
+        return {
+            "window_hours": hours,
+            "project": self.effectiveness(hours=hours),
+            "accounts": accounts,
+            "active": [a for a in accounts if a["state"] == "active"],
+            "idle": [a for a in accounts if a["state"] == "idle"],
+            "ai": self.ai_stats(hours=hours),
+            "activity": self.activity_daily(days=14),
+        }
+
+    def analytics_summary_text(self, account_ids: Optional[List[int]], hours: float = 24) -> str:
+        """A compact textual data dump for feeding to the AI analyst."""
+        lines = [f"Analytics window: last {hours}h.", ""]
+        proj = self.effectiveness(hours=hours)
+        lines.append(f"Project effectiveness: {proj['score']}% "
+                     f"(errors={proj['problems']}, warnings={proj['warnings']}, "
+                     f"total events={proj['total_events']}).")
+        ai = self.ai_stats(hours=hours)
+        lines.append(f"AI agent: {ai['generations']} generations, {ai['errors']} errors, "
+                     f"success rate {ai['success_rate']}%.")
+        lines.append("")
+        for acc in self.accounts_effectiveness(hours=hours):
+            if account_ids and acc["id"] not in account_ids:
+                continue
+            lines.append(
+                f"- {acc['name']} ({acc['handle'] or 'no handle'}): state={acc['state']}, "
+                f"score={acc['score']}, problems={acc['problems']}, events={acc['events']}, "
+                f"used_today={acc['used_today']}/{acc['daily_limit']}, "
+                f"proxy={'yes' if acc['has_proxy'] else 'no'}."
+            )
+        if proj["recent_errors"]:
+            lines.append("")
+            lines.append("Recent problems:")
+            for e in proj["recent_errors"][:8]:
+                lines.append(f"  * {e['ts']} [{e['action']}] {e['detail']}")
+        return "\n".join(lines)
 
     def close(self) -> None:
         with self._lock:

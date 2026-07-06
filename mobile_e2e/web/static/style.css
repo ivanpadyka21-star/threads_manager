@@ -204,3 +204,25 @@ tr.due td { background: rgba(255,176,32,.09); }
 .audit-detail { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-acc { color: var(--dim); text-align: right; }
 @media (max-width: 640px) { .audit-row { grid-template-columns: 46px 1fr; } .audit-detail, .audit-acc { display: none; } }
+
+/* Analytics */
+.chart .bar.on { fill: var(--accent-2); }
+.chart .bar.off { fill: var(--border-2); }
+.score-chip { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 14px; }
+.state { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border: 1px solid var(--border-2); }
+.state.active { color: var(--ok); border-color: rgba(61,220,132,.5); background: rgba(61,220,132,.08); }
+.state.idle { color: var(--dim); }
+.state.new { color: var(--accent-2); border-color: rgba(37,123,255,.4); }
+.an-row { cursor: pointer; }
+.an-row:hover td { background: var(--panel-2); }
+.detail-row td { background: var(--panel-3); }
+.detail-cell { padding: 16px 14px; }
+.det-title { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); margin: 12px 0 6px; font-family: "JetBrains Mono", monospace; }
+.det-err { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--err); padding: 2px 0; }
+label.auto { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--dim); }
+label.auto input { width: auto; margin: 0; }
+.picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1px solid var(--border-2); border-radius: 999px; font-size: 12.5px; cursor: pointer; text-transform: none; letter-spacing: 0; color: var(--text); }
+.chip input { width: auto; margin: 0; }
+.chip:hover { border-color: var(--accent); }
+.an-output { margin-top: 12px; background: #08080b; color: #d6d6e2; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; min-height: 90px; max-height: 320px; overflow: auto; white-space: pre-wrap; font: 12.5px/1.55 "JetBrains Mono", ui-monospace, monospace; }
