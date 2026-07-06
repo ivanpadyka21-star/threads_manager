@@ -173,6 +173,49 @@ def test_analytics_ai_route_degrades(client):
     assert body["answer"] is None and "error" in body and body["data"]
 
 
+def test_analytics_trend_route(client):
+    res = client.get("/api/analytics/trend?days=10")
+    assert res.status_code == 200
+    assert len(res.get_json()) == 10
+
+
+def test_execute_task_success(client):
+    from unittest.mock import MagicMock, patch
+    acc = _add_account(client, name="Exec")
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "kind": "ai_generate", "title": "T", "payload": "Write a post"}).get_json()
+    client.post(f"/api/tasks/{task['id']}/approve")
+    fake = MagicMock(); fake.generate_response.return_value = "Here is a lovely post!"
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        res = client.post(f"/api/tasks/{task['id']}/execute")
+    assert res.status_code == 200
+    assert res.get_json()["result"] == "Here is a lovely post!"
+    # AI success is recorded for analytics.
+    assert any(a["action"] == "ai.generate" for a in client.get("/api/audit").get_json())
+
+
+def test_execute_task_failure_autoflags(client):
+    from unittest.mock import MagicMock, patch
+    acc = _add_account(client, name="Exec2")
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "kind": "ai_generate", "title": "T", "payload": "prompt"}).get_json()
+    client.post(f"/api/tasks/{task['id']}/approve")
+    fake = MagicMock(); fake.generate_response.side_effect = RuntimeError("LLM down")
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        res = client.post(f"/api/tasks/{task['id']}/execute")
+    assert res.status_code == 502
+    assert res.get_json()["flagged"] is True
+    # Task auto-flagged as failed (a problem) and an ai.error recorded.
+    assert client.get("/api/tasks").get_json()  # sanity
+    actions = [a["action"] for a in client.get("/api/audit").get_json()]
+    assert "task.failed" in actions and "ai.error" in actions
+
+
+def test_execute_requires_approval(client):
+    acc = _add_account(client)
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "title": "x", "payload": "p"}).get_json()
+    res = client.post(f"/api/tasks/{task['id']}/execute")  # still pending
+    assert res.status_code == 409
+
+
 def test_run_uses_account_proxy(client):
     """POST /api/run should fall back to the account's stored proxy."""
     store = Store(":memory:")

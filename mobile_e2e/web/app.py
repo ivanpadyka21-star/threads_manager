@@ -84,11 +84,17 @@ def create_app(
 
     @app.get("/api/accounts/<int:account_id>/activity")
     def account_activity(account_id: int):
-        days = request.args.get("days", default=14, type=int)
+        days = request.args.get("days", default=30, type=int)
         return jsonify({
             "activity": db.activity_daily(account_id=account_id, days=days),
             "effectiveness": db.effectiveness(account_id=account_id),
         })
+
+    @app.get("/api/analytics/trend")
+    def analytics_trend():
+        days = request.args.get("days", default=30, type=int)
+        account_id = request.args.get("account_id", type=int)
+        return jsonify(db.effectiveness_trend(days=days, account_id=account_id))
 
     @app.post("/api/analytics/summary")
     def analytics_summary():
@@ -173,6 +179,38 @@ def create_app(
     def delete_task(task_id: int):
         db.delete_task(task_id)
         return jsonify({"deleted": task_id})
+
+    @app.post("/api/tasks/<int:task_id>/execute")
+    def execute_task(task_id: int):
+        """Run an approved AI task: generate a draft, or auto-flag on failure."""
+        task = db.get_task(task_id)
+        if task is None:
+            return jsonify({"error": "task not found"}), 404
+        if task["status"] != "approved":
+            return jsonify({"error": "task must be approved first"}), 409
+        prompt = (task.get("payload") or task.get("title") or "").strip()
+        if not prompt:
+            return jsonify({"error": "task has no content/prompt"}), 400
+
+        account_id = task.get("account_id")
+        tone = None
+        if account_id:
+            account = db.get_account(account_id)
+            tone = (account or {}).get("tone") or None
+        agent = AIAgent(
+            "You draft social media posts for human review.", tone=tone,
+        )
+        try:
+            draft = agent.generate_response(prompt)
+        except Exception as exc:  # noqa: BLE001 - auto-flag the problem
+            # ai.error feeds AI stats (level info to avoid double-weighting),
+            # and marking the task failed records the effectiveness problem.
+            db.record_event("ai.error", str(exc)[:200], account_id, level="info")
+            db.set_task_status(task_id, "failed")
+            return jsonify({"error": str(exc), "flagged": True}), 502
+        db.set_task_result(task_id, draft)
+        db.record_event("ai.generate", f"draft for task #{task_id}", account_id, level="ok")
+        return jsonify({"result": draft, "task": db.get_task(task_id)})
 
     @app.post("/api/tasks/<int:task_id>/status")
     def set_task_status(task_id: int):

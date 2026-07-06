@@ -180,11 +180,24 @@
 
       <!-- Analytics -->
       <section class="tab" id="tab-analytics">
+        <div class="an-controls">
+          <label class="win"><span data-i18n="an.window">Окно</span>
+            <select id="analytics-window">
+              <option value="24" data-i18n="win.24">24 часа</option>
+              <option value="168" data-i18n="win.168">7 дней</option>
+              <option value="720" data-i18n="win.720">30 дней</option>
+            </select>
+          </label>
+          <label class="auto"><input type="checkbox" id="analytics-auto" checked> <span data-i18n="an.auto">Реальное время</span></label>
+        </div>
         <div class="cards" id="analytics-cards"></div>
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="an.trend">Тренд эффективности (30 дн)</h2></div>
+          <div id="analytics-trend"></div>
+        </div>
         <div class="panel">
           <div class="panel-head">
             <h2 data-i18n="an.accounts">Эффективность по аккаунтам</h2>
-            <label class="auto"><input type="checkbox" id="analytics-auto" checked> <span data-i18n="an.auto">Реальное время</span></label>
           </div>
           <div id="analytics-accounts" class="table-wrap"></div>
         </div>

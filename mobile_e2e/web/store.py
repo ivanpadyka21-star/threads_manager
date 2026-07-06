@@ -104,6 +104,7 @@ class Store:
             )
         # Migrate older databases that predate newer columns.
         self._ensure_column("tasks", "reminder", "TEXT")
+        self._ensure_column("tasks", "result", "TEXT")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
 
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
@@ -301,6 +302,13 @@ class Store:
                 (status, _now(), task_id),
             )
 
+    def set_task_result(self, task_id: int, result: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE tasks SET result = ?, updated_at = ? WHERE id = ?",
+                (result, _now(), task_id),
+            )
+
     def _used_today(self, account_id: int) -> int:
         today = date.today().isoformat()
         placeholders = ",".join("?" for _ in _COUNTS_AGAINST_LIMIT)
@@ -409,6 +417,38 @@ class Store:
             if r["level"] == "error":
                 b["errors"] += r["n"]
         return list(buckets.values())
+
+    def effectiveness_trend(self, days: int = 30, account_id: Optional[int] = None) -> List[dict]:
+        """Daily effectiveness score for the last ``days`` (a trend, not just 24h).
+
+        Each day's score is computed from that day's audit events, so it is a
+        real historical trend derived from the source of truth.
+        """
+        start = date.today() - timedelta(days=days - 1)
+        buckets: Dict[str, Dict[str, int]] = {}
+        for i in range(days):
+            d = (start + timedelta(days=i)).isoformat()
+            buckets[d] = {lvl: 0 for lvl in LEVELS}
+        clause = "substr(ts,1,10) >= ?"
+        params: list = [start.isoformat()]
+        if account_id is not None:
+            clause += " AND account_id = ?"
+            params.append(account_id)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT substr(ts,1,10) AS d, level, COUNT(*) AS n "
+                f"FROM audit WHERE {clause} GROUP BY d, level", params
+            ).fetchall()
+        for r in rows:
+            if r["d"] in buckets:
+                buckets[r["d"]][r["level"]] = r["n"]
+        out = []
+        for d, c in buckets.items():
+            succ = c["ok"] + c["info"]
+            prob = c["error"] * 1.0 + c["warn"] * 0.4
+            score = round(100 * succ / (succ + prob), 1) if (succ + prob) > 0 else None
+            out.append({"date": d, "score": score, "total": sum(c.values()), "errors": c["error"]})
+        return out
 
     def effectiveness(self, hours: float = 24, account_id: Optional[int] = None) -> dict:
         """Compute an explainable effectiveness score over a rolling window.

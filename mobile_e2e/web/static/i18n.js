@@ -62,6 +62,9 @@ const TRANSLATIONS = {
     "state.active": "Активен", "state.idle": "Простаивает", "state.new": "Новый",
     "col.state": "Статус", "col.score": "Оценка", "col.problems": "Проблемы",
     "col.events": "События", "col.activity": "Активность (14 дн)",
+    "an.window": "Окно", "win.24": "24 часа", "win.168": "7 дней", "win.720": "30 дней",
+    "an.trend": "Тренд эффективности (30 дн)", "an.calendar": "Календарь запусков (30 дн)",
+    "btn.execute": "Выполнить (ИИ)", "an.draft": "Черновик", "an.no_trend": "Недостаточно данных для тренда.",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -122,6 +125,9 @@ const TRANSLATIONS = {
     "state.active": "Active", "state.idle": "Idle", "state.new": "New",
     "col.state": "State", "col.score": "Score", "col.problems": "Problems",
     "col.events": "Events", "col.activity": "Activity (14d)",
+    "an.window": "Window", "win.24": "24 hours", "win.168": "7 days", "win.720": "30 days",
+    "an.trend": "Effectiveness trend (30d)", "an.calendar": "Launch calendar (30d)",
+    "btn.execute": "Run (AI)", "an.draft": "Draft", "an.no_trend": "Not enough data for a trend.",
   },
 };
 

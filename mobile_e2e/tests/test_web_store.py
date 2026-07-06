@@ -154,6 +154,25 @@ def test_ai_stats(store):
     assert ai["success_rate"] == 50.0
 
 
+def test_effectiveness_trend(store):
+    acc = store.add_account(name="A")
+    task = store.add_task(account_id=acc["id"], title="x")
+    store.approve_task(task["id"])
+    trend = store.effectiveness_trend(days=30)
+    assert len(trend) == 30
+    # today should have a computed score from the events above
+    assert trend[-1]["score"] is not None
+    # a day with no events has score None
+    assert trend[0]["score"] is None
+
+
+def test_task_result_stored(store):
+    acc = store.add_account(name="A")
+    task = store.add_task(account_id=acc["id"], title="x")
+    store.set_task_result(task["id"], "generated draft")
+    assert store.get_task(task["id"])["result"] == "generated draft"
+
+
 def test_analytics_overview_and_summary(store):
     acc = store.add_account(name="Alpha")
     store.add_task(account_id=acc["id"], title="x")

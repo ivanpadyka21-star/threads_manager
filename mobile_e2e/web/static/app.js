@@ -167,6 +167,7 @@ async function loadTasks() {
       actions.append(el("button", { class: "mini ok", text: t("btn.approve"), onclick: () => approveTask(tk.id) }));
       actions.append(el("button", { class: "mini danger", text: t("btn.reject"), onclick: () => setTaskStatus(tk.id, "rejected") }));
     } else if (tk.status === "approved") {
+      actions.append(el("button", { class: "mini grad", text: t("btn.execute"), onclick: () => executeTask(tk.id) }));
       actions.append(el("button", { class: "mini", text: t("btn.done"), onclick: () => setTaskStatus(tk.id, "done") }));
     }
     actions.append(el("button", { class: "mini danger", text: "✕", title: t("btn.delete"), onclick: async () => {
@@ -184,6 +185,16 @@ async function approveTask(id) {
   catch (err) { alert(err); }
 }
 async function setTaskStatus(id, status) { await jpost(`/api/tasks/${id}/status`, { status }); loadTasks(); }
+async function executeTask(id) {
+  try {
+    const res = await jpost(`/api/tasks/${id}/execute`);
+    alert(t("an.draft") + ":\n\n" + (res.result || ""));
+  } catch (err) {
+    // On AI failure the backend auto-flags the task as a problem.
+    alert("⚠ " + err);
+  }
+  loadTasks(); if (currentTab === "dashboard") loadDashboard();
+}
 $("#task-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
@@ -245,15 +256,66 @@ function barChart(values, w = 220, h = 42) {
   return s;
 }
 function scoreColor(score) { if (score == null) return "var(--dim)"; if (score >= 85) return "var(--ok)"; if (score >= 60) return "var(--warn)"; return "var(--err)"; }
+function lineChart(points, w = 900, h = 120) {
+  // points: [{date, score|null}]. Draws an area+line for available scores.
+  const s = svg("svg", { viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", width: "100%", height: h, class: "line-chart" });
+  const n = points.length; if (!n) return s;
+  const xs = (i) => (n === 1 ? w / 2 : (i / (n - 1)) * (w - 8) + 4);
+  const ys = (v) => h - 8 - (v / 100) * (h - 16);
+  // gridlines at 0/50/100
+  [0, 50, 100].forEach(g => s.append(svg("line", { x1: 0, x2: w, y1: ys(g), y2: ys(g), class: "grid" })));
+  const pts = points.map((p, i) => (p.score == null ? null : [xs(i), ys(p.score)])).filter(Boolean);
+  if (pts.length) {
+    const d = pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+    const area = `M${pts[0][0].toFixed(1)} ${h - 8} ` + pts.map(p => "L" + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + ` L${pts[pts.length - 1][0].toFixed(1)} ${h - 8} Z`;
+    s.append(svg("path", { d: area, class: "area" }));
+    s.append(svg("path", { d, class: "line" }));
+    pts.forEach(p => s.append(svg("circle", { cx: p[0].toFixed(1), cy: p[1].toFixed(1), r: 2.5, class: "dot" })));
+  }
+  return s;
+}
+function heatmap(cells) {
+  // cells: [{date,total,errors}] -> weekday-aligned grid, intensity by activity.
+  const max = Math.max(1, ...cells.map(c => c.total));
+  const wrap = el("div", { class: "heat" });
+  if (cells.length) {
+    const first = new Date(cells[0].date);
+    let lead = (first.getDay() + 6) % 7; // Mon=0
+    for (let i = 0; i < lead; i++) wrap.append(el("span", { class: "hc blank" }));
+  }
+  cells.forEach(c => {
+    let lvl = 0;
+    if (c.total > 0) lvl = c.total >= max * 0.66 ? 3 : c.total >= max * 0.33 ? 2 : 1;
+    const cell = el("span", { class: "hc l" + lvl + (c.errors ? " err" : ""), title: `${c.date}: ${c.total}${c.errors ? " · errors " + c.errors : ""}` });
+    wrap.append(cell);
+  });
+  return wrap;
+}
 
 // --- analytics -------------------------------------------------------------
-let anAccounts = [];
+let analyticsHours = 24;
 async function loadAnalytics(full) {
-  const a = await api("/api/analytics");
+  const [a, trend] = await Promise.all([
+    api("/api/analytics?hours=" + analyticsHours),
+    api("/api/analytics/trend?days=30"),
+  ]);
   renderAnalyticsCards(a);
+  renderTrend(trend);
   renderAnalyticsAccounts(a.accounts);
   if (full) renderPicker(a.accounts);
 }
+function renderTrend(points) {
+  const wrap = $("#analytics-trend"); wrap.innerHTML = "";
+  const withData = points.filter(p => p.score != null);
+  if (withData.length < 2) { wrap.innerHTML = `<div class="empty">${t("an.no_trend")}</div>`; return; }
+  wrap.append(lineChart(points, 900, 130));
+  const scale = el("div", { class: "trend-scale" });
+  scale.append(el("span", { text: points[0].date.slice(5) }));
+  scale.append(el("span", { text: points[points.length - 1].date.slice(5) }));
+  wrap.append(scale);
+}
+const winSel = $("#analytics-window");
+if (winSel) winSel.addEventListener("change", () => { analyticsHours = Number(winSel.value); loadAnalytics(false); });
 function renderAnalyticsCards(a) {
   const p = a.project || {};
   const cards = [
@@ -289,9 +351,10 @@ function renderAnalyticsAccounts(rows) {
 async function toggleAccountDetail(tr, id) {
   const next = tr.nextElementSibling;
   if (next && next.classList.contains("detail-row")) { next.remove(); return; }
-  const data = await api(`/api/accounts/${id}/activity?days=14`);
+  const data = await api(`/api/accounts/${id}/activity?days=30`);
   const cell = el("td", { colspan: 7, class: "detail-cell" });
-  cell.append(barChart((data.activity || []).map(d => d.total), 520, 90));
+  cell.append(el("div", { class: "det-title", text: t("an.calendar") }));
+  cell.append(heatmap(data.activity || []));
   const errs = (data.effectiveness && data.effectiveness.recent_errors) || [];
   if (errs.length) {
     cell.append(el("div", { class: "det-title", text: t("an.recent_errors") }));
