@@ -105,6 +105,9 @@ class Store:
         # Migrate older databases that predate newer columns.
         self._ensure_column("tasks", "reminder", "TEXT")
         self._ensure_column("tasks", "result", "TEXT")
+        self._ensure_column("tasks", "language", "TEXT DEFAULT ''")
+        self._ensure_column("tasks", "style", "TEXT DEFAULT ''")
+        self._ensure_column("tasks", "target", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
 
@@ -198,6 +201,9 @@ class Store:
             "kind": fields.get("kind", "post"),
             "title": fields.get("title", "").strip(),
             "payload": fields.get("payload", "").strip(),
+            "language": fields.get("language", "").strip(),
+            "style": fields.get("style", "").strip(),
+            "target": fields.get("target", "").strip(),
             "status": "pending",
             "deadline": (fields.get("deadline") or None),
             "reminder": (fields.get("reminder") or None),
@@ -207,10 +213,11 @@ class Store:
         with self._lock, self._conn:
             cur = self._conn.execute(
                 """INSERT INTO tasks
-                   (account_id, kind, title, payload, status, deadline, reminder,
-                    created_at, updated_at)
-                   VALUES (:account_id, :kind, :title, :payload, :status,
-                           :deadline, :reminder, :created_at, :updated_at)""",
+                   (account_id, kind, title, payload, language, style, target,
+                    status, deadline, reminder, created_at, updated_at)
+                   VALUES (:account_id, :kind, :title, :payload, :language, :style,
+                           :target, :status, :deadline, :reminder, :created_at,
+                           :updated_at)""",
                 cols,
             )
             task_id = cur.lastrowid

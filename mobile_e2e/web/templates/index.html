@@ -112,16 +112,29 @@
             <label><span data-i18n="task.type">Тип</span>
               <select name="kind">
                 <option value="post" data-i18n="task.kind.post">Пост</option>
+                <option value="comment" data-i18n="task.kind.comment">Комментарий</option>
                 <option value="reply" data-i18n="task.kind.reply">Ответ</option>
                 <option value="ai_generate" data-i18n="task.kind.ai">Черновик ИИ</option>
                 <option value="custom" data-i18n="task.kind.custom">Другое</option>
               </select>
             </label>
             <label><span data-i18n="task.title">Название</span> <input name="title" data-i18n-ph="task.title.ph" placeholder="краткая метка"></label>
+            <label><span data-i18n="task.language">Язык</span>
+              <select name="language">
+                <option value="">—</option>
+                <option value="Ukrainian">Українська</option>
+                <option value="Russian">Русский</option>
+                <option value="English">English</option>
+                <option value="Polish">Polski</option>
+                <option value="German">Deutsch</option>
+              </select>
+            </label>
+            <label><span data-i18n="task.style">Характер / стиль</span> <input name="style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно, с юмором"></label>
+            <label class="wide"><span data-i18n="task.target">Цель (ссылка/описание поста)</span> <input name="target" data-i18n-ph="task.target.ph" placeholder="ссылка или описание поста, к которому комментарий"></label>
             <label><span data-i18n="task.deadline">Дедлайн</span> <input name="deadline" type="datetime-local"></label>
             <label><span data-i18n="task.reminder">🔔 Напоминание</span> <input name="reminder" type="datetime-local"></label>
-            <label class="wide"><span data-i18n="task.content">Контент / промпт ИИ</span>
-              <textarea name="payload" rows="3" data-i18n-ph="task.content.ph" placeholder="Текст поста или промпт для ИИ-агента"></textarea>
+            <label class="wide"><span data-i18n="task.content">Контент / инструкция ИИ</span>
+              <textarea name="payload" rows="3" data-i18n-ph="task.content.ph" placeholder="Текст поста, или инструкция ИИ: что написать / о чём комментарий"></textarea>
             </label>
             <div class="form-actions">
               <button type="submit" data-i18n="task.queue">Поставить в очередь</button>

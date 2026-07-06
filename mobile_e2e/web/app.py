@@ -17,6 +17,7 @@ from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web import threads_client
+from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
@@ -231,20 +232,15 @@ def create_app(
             return jsonify({"error": "task not found"}), 404
         if task["status"] != "approved":
             return jsonify({"error": "task must be approved first"}), 409
-        prompt = (task.get("payload") or task.get("title") or "").strip()
-        if not prompt:
+        if not (task.get("payload") or task.get("title") or task.get("target") or "").strip():
             return jsonify({"error": "task has no content/prompt"}), 400
 
         account_id = task.get("account_id")
-        tone = None
-        if account_id:
-            account = db.get_account(account_id)
-            tone = (account or {}).get("tone") or None
-        agent = AIAgent(
-            "You draft social media posts for human review.", tone=tone,
-        )
+        account = db.get_account(account_id) if account_id else None
+        system_prompt, user_prompt = build_ai_prompt(task, account)
+        agent = AIAgent(system_prompt)
         try:
-            draft = agent.generate_response(prompt)
+            draft = agent.generate_response(user_prompt)
         except Exception as exc:  # noqa: BLE001 - auto-flag the problem
             # ai.error feeds AI stats (level info to avoid double-weighting),
             # and marking the task failed records the effectiveness problem.

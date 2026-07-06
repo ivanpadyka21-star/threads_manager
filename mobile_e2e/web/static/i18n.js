@@ -89,6 +89,10 @@ const TRANSLATIONS = {
     "th.creds": "Нет файла кредов — OAuth не пройден", "th.ready": "Готово к публикации.",
     "th.steps": "Заполните .env (см. .env.example), создайте SSL-сертификаты и пройдите OAuth: python api.py",
     "btn.publish": "Опубликовать", "th.published": "Опубликовано в Threads",
+    "task.kind.comment": "Комментарий", "task.language": "Язык",
+    "task.style": "Характер / стиль", "task.style.ph": "напр. дружелюбно, с юмором",
+    "task.target": "Цель (ссылка/описание поста)",
+    "task.target.ph": "ссылка или описание поста, к которому комментарий",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -176,6 +180,10 @@ const TRANSLATIONS = {
     "th.creds": "No credentials file — OAuth not completed", "th.ready": "Ready to publish.",
     "th.steps": "Fill .env (see .env.example), create SSL certs and run OAuth: python api.py",
     "btn.publish": "Publish", "th.published": "Published to Threads",
+    "task.kind.comment": "Comment", "task.language": "Language",
+    "task.style": "Character / style", "task.style.ph": "e.g. friendly, witty",
+    "task.target": "Target (post link/description)",
+    "task.target.ph": "link or description of the post to comment on",
   },
 };
 

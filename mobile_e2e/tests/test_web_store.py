@@ -177,6 +177,18 @@ def test_effectiveness_trend(store):
     assert trend[0]["score"] is None
 
 
+def test_task_structured_fields_stored(store):
+    acc = store.add_account(name="A")
+    task = store.add_task(
+        account_id=acc["id"], kind="comment", title="c",
+        language="Ukrainian", style="witty", target="http://x/post/1",
+    )
+    got = store.get_task(task["id"])
+    assert got["language"] == "Ukrainian"
+    assert got["style"] == "witty"
+    assert got["target"] == "http://x/post/1"
+
+
 def test_task_result_stored(store):
     acc = store.add_account(name="A")
     task = store.add_task(account_id=acc["id"], title="x")
