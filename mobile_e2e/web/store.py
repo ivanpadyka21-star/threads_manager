@@ -269,6 +269,13 @@ class Store:
         self.log(f"task.{status}", task["title"], task["account_id"])
         return self.get_task(task_id)
 
+    def delete_task(self, task_id: int) -> None:
+        task = self.get_task(task_id)
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        if task is not None:
+            self.log("task.delete", task.get("title", ""), task.get("account_id"))
+
     def _set_status(self, task_id: int, status: str) -> None:
         with self._lock, self._conn:
             self._conn.execute(

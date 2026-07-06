@@ -167,7 +167,10 @@ async function loadTasks() {
       actions.append(el("button", { class: "mini danger", text: t("btn.reject"), onclick: () => setTaskStatus(tk.id, "rejected") }));
     } else if (tk.status === "approved") {
       actions.append(el("button", { class: "mini", text: t("btn.done"), onclick: () => setTaskStatus(tk.id, "done") }));
-    } else { actions.append(el("span", { class: "pill", text: "—" })); }
+    }
+    actions.append(el("button", { class: "mini danger", text: "✕", title: t("btn.delete"), onclick: async () => {
+      await api("/api/tasks/" + tk.id, { method: "DELETE" }); loadTasks(); if (currentTab === "dashboard") loadDashboard();
+    }}));
     const rem = tk.reminder ? el("span", { class: "bell", text: "🔔 " + fmtDate(tk.reminder) }) : el("span", { class: "pill", text: "—" });
     table.append(el("tr", {}, td(tk.title || "—"), td(nameById[tk.account_id] || "—"),
       td(t("task.kind." + ({post:"post",reply:"reply",ai_generate:"ai",custom:"custom"}[tk.kind] || "custom"))),

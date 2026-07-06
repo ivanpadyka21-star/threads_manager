@@ -82,6 +82,13 @@ def test_task_status_endpoint(client):
     assert res.status_code == 200 and res.get_json()["status"] == "rejected"
 
 
+def test_delete_task(client):
+    acc = _add_account(client)
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "title": "junk"}).get_json()
+    assert client.delete(f"/api/tasks/{task['id']}").status_code == 200
+    assert client.get("/api/tasks").get_json() == []
+
+
 def test_task_status_invalid(client):
     acc = _add_account(client)
     task = client.post("/api/tasks", json={"account_id": acc["id"], "title": "x"}).get_json()

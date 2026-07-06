@@ -116,6 +116,11 @@ def create_app(
             return jsonify({"error": str(exc)}), 409
         return jsonify(task)
 
+    @app.delete("/api/tasks/<int:task_id>")
+    def delete_task(task_id: int):
+        db.delete_task(task_id)
+        return jsonify({"deleted": task_id})
+
     @app.post("/api/tasks/<int:task_id>/status")
     def set_task_status(task_id: int):
         data = request.get_json(silent=True) or {}
