@@ -51,7 +51,7 @@ class WorkflowRequest:
     system_prompt: str = ""
     tone: str = ""
     fallback: str = ""
-    model: str = "gpt-4o-mini"
+    model: str = ""  # empty -> provider default (Gemini)
     base_url: str = ""
     api_key: str = ""
 
@@ -120,10 +120,12 @@ class WebService:
             ProxyConfig.from_string(req.proxy_string)  # raises ProxyParseError
 
     def build_agent(self, req: WorkflowRequest) -> AIAgent:
+        # Leave model/base_url as None when unset so the provider defaults
+        # (Gemini by default) apply instead of forcing an OpenAI model.
         settings = AISettings(
             api_key=req.api_key.strip() or None,
             base_url=req.base_url.strip() or None,
-            model=req.model.strip() or "gpt-4o-mini",
+            model=req.model.strip() or None,
         )
         return AIAgent(
             req.system_prompt,
