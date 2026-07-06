@@ -56,7 +56,10 @@ def main() -> None:
     from pythreads.threads import Threads
 
     # Only request scopes the app actually has, or Threads returns invalid_scope.
-    scopes_env = os.getenv("E2E_THREADS_SCOPES", "threads_basic,threads_content_publish")
+    scopes_env = os.getenv(
+        "E2E_THREADS_SCOPES",
+        "threads_basic,threads_content_publish,threads_manage_replies",
+    )
     scopes = [s.strip() for s in scopes_env.split(",") if s.strip()]
     config = Threads.load_configuration(scopes=scopes)
     auth_url, state = Threads.authorization_url(config=config)
