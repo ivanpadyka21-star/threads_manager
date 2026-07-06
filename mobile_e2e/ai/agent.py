@@ -22,12 +22,17 @@ if TYPE_CHECKING:
 
 LOG = get_logger(__name__)
 
-# Transient provider errors worth retrying; everything else fails fast.
-_TRANSIENT_ERRORS = (
-    openai.RateLimitError,
+# Errors that should retry the SAME model (transient network/server issues).
+_RETRY_ERRORS = (
     openai.APIConnectionError,
     openai.APITimeoutError,
     openai.InternalServerError,
+)
+# Errors that should immediately try the NEXT model in the chain
+# (rate limit = separate quota per model; not-found = wrong model id).
+_SWITCH_ERRORS = (
+    openai.RateLimitError,
+    openai.NotFoundError,
 )
 
 
@@ -111,44 +116,55 @@ class AIAgent:
             {"role": "user", "content": context_text},
         ]
 
-        attempts = self._max_retries + 1
-        delay = self._retry_delay
+        models = self._settings.model_list or [self._settings.model]
         last_error: Optional[BaseException] = None
 
+        for model in models:
+            try:
+                return self._call_model(model, messages)
+            except _SWITCH_ERRORS as exc:
+                last_error = exc
+                LOG.warning("Model %s unavailable (%s); trying next model.", model, type(exc).__name__)
+                continue
+            except _RETRY_ERRORS as exc:
+                # Retried within _call_model and still failing -> next model.
+                last_error = exc
+                LOG.warning("Model %s failing (%s); trying next model.", model, type(exc).__name__)
+                continue
+            except AIAgentError as exc:
+                # Empty response -> try the next model.
+                last_error = exc
+                continue
+            except openai.OpenAIError as exc:
+                # Auth / bad request: switching models won't help.
+                last_error = exc
+                break
+
+        return self._handle_failure(context_text, last_error)
+
+    def _call_model(self, model: str, messages: list) -> str:
+        """One model, with same-model retries for transient network errors."""
+        attempts = self._max_retries + 1
+        delay = self._retry_delay
         for attempt in range(1, attempts + 1):
             try:
                 response = self.client.chat.completions.create(
-                    model=self._settings.model,
+                    model=model,
                     messages=messages,
                     temperature=self._settings.temperature,
                     max_tokens=self._settings.max_tokens,
                 )
-            except _TRANSIENT_ERRORS as exc:
-                last_error = exc
+            except _RETRY_ERRORS:
                 if attempt < attempts:
-                    LOG.warning(
-                        "LLM call failed (attempt %d/%d): %s -- retrying in %.1fs",
-                        attempt,
-                        attempts,
-                        type(exc).__name__,
-                        delay,
-                    )
                     time.sleep(delay)
                     delay *= 2
                     continue
-                break
-            except openai.OpenAIError as exc:
-                # Non-transient (auth, bad request, ...): do not retry.
-                last_error = exc
-                break
-            else:
-                content = self._extract_content(response)
-                if content:
-                    return content
-                last_error = AIAgentError("LLM returned an empty response.")
-                break
-
-        return self._handle_failure(context_text, last_error)
+                raise
+            content = self._extract_content(response)
+            if content:
+                return content
+            raise AIAgentError("LLM returned an empty response.")
+        raise AIAgentError("exhausted retries")  # pragma: no cover
 
     # -- helpers ------------------------------------------------------------
     @staticmethod

@@ -13,12 +13,31 @@ Design guardrails baked in:
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from pathlib import Path
+
+
+def _resolve_tz():
+    """Local timezone for the dashboard (default Kyiv). Falls back gracefully."""
+    name = os.getenv("E2E_TZ", "Europe/Kyiv")
+    try:
+        from zoneinfo import ZoneInfo
+        for candidate in (name, "Europe/Kiev"):
+            try:
+                return ZoneInfo(candidate)
+            except Exception:  # noqa: BLE001 - try the next candidate
+                continue
+    except Exception:  # noqa: BLE001 - zoneinfo/tzdata unavailable
+        pass
+    return timezone(timedelta(hours=3))  # Kyiv summer offset fallback
+
+
+_TZ = _resolve_tz()
 
 # Task lifecycle states. "scheduled" tasks are auto-published by the scheduler
 # when their scheduled_for time arrives.
@@ -41,11 +60,18 @@ _ACTION_LEVEL = {
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    """Current local (Kyiv) time as a naive ISO string."""
+    return datetime.now(_TZ).replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def _today() -> str:
+    return datetime.now(_TZ).date().isoformat()
 
 
 def _cutoff(hours: float) -> str:
-    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    return (
+        datetime.now(_TZ).replace(tzinfo=None) - timedelta(hours=hours)
+    ).isoformat(timespec="seconds")
 
 
 class RateLimitError(Exception):
@@ -255,7 +281,7 @@ class Store:
         base = (
             datetime.fromisoformat(start_at)
             if start_at
-            else datetime.now(timezone.utc).replace(tzinfo=None)
+            else datetime.now(_TZ).replace(tzinfo=None)
         )
         batch_id = uuid.uuid4().hex
         tasks = []
@@ -293,7 +319,7 @@ class Store:
 
     def due_scheduled_tasks(self) -> List[dict]:
         """Scheduled tasks whose time has arrived (for the publisher)."""
-        now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="minutes")
+        now = datetime.now(_TZ).replace(tzinfo=None).isoformat(timespec="minutes")
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM tasks WHERE status = 'scheduled' "
@@ -343,8 +369,8 @@ class Store:
         problems (error events), newest first, with a badge ``count`` of the
         items that need attention.
         """
-        now_s = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
-        soon_s = (datetime.now(timezone.utc).replace(tzinfo=None)
+        now_s = datetime.now(_TZ).replace(tzinfo=None).isoformat(timespec="seconds")
+        soon_s = (datetime.now(_TZ).replace(tzinfo=None)
                   + timedelta(hours=within_hours)).isoformat(timespec="seconds")
         items: List[dict] = []
 
@@ -448,7 +474,7 @@ class Store:
             )
 
     def _used_today(self, account_id: int) -> int:
-        today = date.today().isoformat()
+        today = datetime.now(_TZ).date().isoformat()
         placeholders = ",".join("?" for _ in _COUNTS_AGAINST_LIMIT)
         with self._lock:
             row = self._conn.execute(
@@ -532,7 +558,7 @@ class Store:
         Returns one entry per day (oldest first) with total events and error
         count, so a sparkline can show load and problems over time.
         """
-        start = (date.today() - timedelta(days=days - 1))
+        start = (datetime.now(_TZ).date() - timedelta(days=days - 1))
         buckets: Dict[str, dict] = {}
         for i in range(days):
             d = (start + timedelta(days=i)).isoformat()
@@ -562,7 +588,7 @@ class Store:
         Each day's score is computed from that day's audit events, so it is a
         real historical trend derived from the source of truth.
         """
-        start = date.today() - timedelta(days=days - 1)
+        start = datetime.now(_TZ).date() - timedelta(days=days - 1)
         buckets: Dict[str, Dict[str, int]] = {}
         for i in range(days):
             d = (start + timedelta(days=i)).isoformat()
@@ -675,8 +701,8 @@ class Store:
         the same key, and Google does not expose remaining quota via this
         endpoint.
         """
-        today = date.today().isoformat()
-        minute_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(timespec="seconds")
+        today = datetime.now(_TZ).date().isoformat()
+        minute_cutoff = (datetime.now(_TZ).replace(tzinfo=None) - timedelta(seconds=60)).isoformat(timespec="seconds")
         with self._lock:
             used_today = self._conn.execute(
                 "SELECT COUNT(*) AS n FROM audit WHERE action = 'ai.generate' "

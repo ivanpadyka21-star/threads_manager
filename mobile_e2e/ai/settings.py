@@ -62,7 +62,12 @@ class AISettings(BaseSettings):
     )
     model: Optional[str] = Field(
         default=None,
-        description="Model id (defaults per provider).",
+        description="Primary model id (defaults per provider).",
+    )
+    models: Optional[str] = Field(
+        default=None,
+        description="Comma-separated fallback chain; tried in order when a "
+        "model is rate-limited or unavailable. Defaults from `model`.",
     )
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(default=None, ge=1)
@@ -70,16 +75,33 @@ class AISettings(BaseSettings):
 
     @model_validator(mode="after")
     def _apply_provider_defaults(self) -> "AISettings":
-        """Fill base_url/model from the provider when not set explicitly."""
+        """Fill base_url/model/models from the provider when not set."""
         if self.provider == "gemini":
             if not self.base_url:
                 self.base_url = GEMINI_OPENAI_BASE
             if not self.model:
                 self.model = DEFAULT_GEMINI_MODEL
+            if not self.models:
+                primary = self.model
+                # Auto-add a lighter Gemini model (separate quota) as fallback,
+                # but only for real gemini-* models.
+                if primary.startswith("gemini") and primary != "gemini-2.5-flash-lite":
+                    self.models = f"{primary},gemini-2.5-flash-lite"
+                else:
+                    self.models = primary
         else:  # openai (or any explicit base_url)
             if not self.model:
                 self.model = DEFAULT_OPENAI_MODEL
+            if not self.models:
+                self.models = self.model
         return self
+
+    @property
+    def model_list(self) -> list:
+        """The ordered fallback chain of model ids."""
+        if self.models:
+            return [m.strip() for m in self.models.split(",") if m.strip()]
+        return [self.model] if self.model else []
 
 
 @lru_cache(maxsize=1)

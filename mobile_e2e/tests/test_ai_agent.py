@@ -72,6 +72,48 @@ def test_explicit_base_url_and_model_kept():
     assert s.model == "llama3"
 
 
+def test_default_model_chain_has_fallback():
+    s = AISettings(api_key="k", _env_file=None)
+    assert s.model_list == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
+
+def test_explicit_models_chain():
+    s = AISettings(api_key="k", models="a, b ,c", _env_file=None)
+    assert s.model_list == ["a", "b", "c"]
+
+
+def _rate_limit_error():
+    resp = httpx.Response(429, request=httpx.Request("POST", "http://llm"))
+    return openai.RateLimitError("rate limited", response=resp, body=None)
+
+
+def test_model_fallback_on_rate_limit():
+    """First model is rate-limited -> the agent switches to the next model."""
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [_rate_limit_error(), _response("ok from model 2")]
+    agent = AIAgent(
+        "prompt",
+        settings=AISettings(api_key="k", models="model-a,model-b", _env_file=None),
+        client=client,
+    )
+    assert agent.generate_response("ctx") == "ok from model 2"
+    # both models were tried, in order
+    models_tried = [c.kwargs["model"] for c in client.chat.completions.create.call_args_list]
+    assert models_tried == ["model-a", "model-b"]
+
+
+def test_all_models_rate_limited_raises():
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [_rate_limit_error(), _rate_limit_error()]
+    agent = AIAgent(
+        "prompt",
+        settings=AISettings(api_key="k", models="a,b", _env_file=None),
+        client=client,
+    )
+    with pytest.raises(AIAgentError):
+        agent.generate_response("ctx")
+
+
 def test_gemini_key_from_env(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", "gm-123")

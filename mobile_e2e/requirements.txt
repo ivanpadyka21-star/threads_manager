@@ -7,6 +7,8 @@ rich
 openai>=1.30
 # web UI
 Flask>=3.0
+# IANA timezone data (Kyiv) for zoneinfo on Windows
+tzdata
 # Threads official API (used only when credentials are configured)
 pythreads
 # testing
