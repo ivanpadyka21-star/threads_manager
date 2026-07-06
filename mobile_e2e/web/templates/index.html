@@ -1,9 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SMM Studio — Dashboard</title>
+  <title>SMM Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -15,15 +18,19 @@
         <span class="brand-name">SMM <b>Studio</b></span>
       </div>
       <nav class="nav">
-        <button class="nav-item active" data-tab="dashboard"><span>▚</span> Dashboard</button>
-        <button class="nav-item" data-tab="accounts"><span>◉</span> Accounts</button>
-        <button class="nav-item" data-tab="tasks"><span>☑</span> Tasks</button>
-        <button class="nav-item" data-tab="runs"><span>▶</span> Runs</button>
-        <button class="nav-item" data-tab="stats"><span>▤</span> Statistics</button>
-        <button class="nav-item" data-tab="audit"><span>≣</span> Audit</button>
-        <button class="nav-item" data-tab="settings"><span>⚙</span> Settings</button>
+        <button class="nav-item active" data-tab="dashboard"><span>▚</span> <em data-i18n="nav.dashboard">Дашборд</em></button>
+        <button class="nav-item" data-tab="accounts"><span>◉</span> <em data-i18n="nav.accounts">Аккаунты</em></button>
+        <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
+        <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
+        <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
+        <button class="nav-item" data-tab="audit"><span>≣</span> <em data-i18n="nav.audit">Журнал</em></button>
+        <button class="nav-item" data-tab="settings"><span>⚙</span> <em data-i18n="nav.settings">Настройки</em></button>
       </nav>
       <div class="side-foot">
+        <div class="lang" id="lang-toggle">
+          <button data-lang="ru" class="active">RU</button>
+          <button data-lang="en">EN</button>
+        </div>
         <span id="live" class="live offline">● offline</span>
       </div>
     </aside>
@@ -31,17 +38,19 @@
     <!-- Main -->
     <main class="main">
       <header class="topbar">
-        <h1 id="page-title">Dashboard</h1>
-        <div class="topbar-actions">
-          <span class="hint" id="global-hint">Human-in-the-loop · every action needs your approval</span>
-        </div>
+        <h1 id="page-title" data-i18n="nav.dashboard">Дашборд</h1>
+        <span class="hint" data-i18n="hint.hitl">Человек в цикле · каждое действие подтверждаете вы</span>
       </header>
 
       <!-- Dashboard -->
       <section class="tab active" id="tab-dashboard">
         <div class="cards" id="summary-cards"></div>
         <div class="panel">
-          <div class="panel-head"><h2>Accounts overview</h2></div>
+          <div class="panel-head"><h2 data-i18n="reminders.title">Напоминания</h2></div>
+          <div id="reminders-list" class="table-wrap"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="dash.accounts">Обзор аккаунтов</h2></div>
           <div id="dashboard-accounts" class="table-wrap"></div>
         </div>
       </section>
@@ -49,22 +58,22 @@
       <!-- Accounts -->
       <section class="tab" id="tab-accounts">
         <div class="panel">
-          <div class="panel-head"><h2>Add account</h2></div>
+          <div class="panel-head"><h2 data-i18n="acc.add">Добавить аккаунт</h2></div>
           <form id="account-form" class="form-grid">
-            <label>Name <input name="name" placeholder="Client / account name" required></label>
-            <label>Handle <input name="handle" placeholder="@handle"></label>
-            <label>Proxy <span class="dim">(optional)</span> <input name="proxy_string" placeholder="ip:port:login:pass"></label>
-            <label>Daily limit <input name="daily_limit" type="number" min="1" value="20"></label>
-            <label>Tone of voice <input name="tone" placeholder="friendly, concise"></label>
-            <label class="wide">Notes <input name="notes" placeholder="optional"></label>
+            <label><span data-i18n="acc.name">Имя</span> <input name="name" data-i18n-ph="acc.name.ph" placeholder="Клиент / аккаунт" required></label>
+            <label><span data-i18n="acc.handle">Хэндл</span> <input name="handle" placeholder="@handle"></label>
+            <label><span data-i18n="acc.proxy">Прокси</span> <input name="proxy_string" placeholder="ip:port:login:pass"></label>
+            <label><span data-i18n="acc.limit">Дневной лимит</span> <input name="daily_limit" type="number" min="1" value="20"></label>
+            <label><span data-i18n="acc.tone">Тон общения</span> <input name="tone" data-i18n-ph="acc.tone.ph" placeholder="дружелюбно, кратко"></label>
+            <label class="wide"><span data-i18n="acc.notes">Заметки</span> <input name="notes" data-i18n-ph="acc.notes.ph" placeholder="необязательно"></label>
             <div class="form-actions">
-              <button type="submit">Add account</button>
+              <button type="submit" data-i18n="acc.add.btn">Добавить</button>
               <output id="account-msg" class="hint"></output>
             </div>
           </form>
         </div>
         <div class="panel">
-          <div class="panel-head"><h2>Accounts</h2></div>
+          <div class="panel-head"><h2 data-i18n="nav.accounts">Аккаунты</h2></div>
           <div id="accounts-table" class="table-wrap"></div>
         </div>
       </section>
@@ -72,42 +81,41 @@
       <!-- Tasks -->
       <section class="tab" id="tab-tasks">
         <div class="panel">
-          <div class="panel-head"><h2>New task</h2></div>
+          <div class="panel-head"><h2 data-i18n="task.new">Новая задача</h2></div>
           <form id="task-form" class="form-grid">
-            <label>Account
+            <label><span data-i18n="task.account">Аккаунт</span>
               <select name="account_id" id="task-account"></select>
             </label>
-            <label>Type
+            <label><span data-i18n="task.type">Тип</span>
               <select name="kind">
-                <option value="post">Post</option>
-                <option value="reply">Reply</option>
-                <option value="ai_generate">AI draft</option>
-                <option value="custom">Custom</option>
+                <option value="post" data-i18n="task.kind.post">Пост</option>
+                <option value="reply" data-i18n="task.kind.reply">Ответ</option>
+                <option value="ai_generate" data-i18n="task.kind.ai">Черновик ИИ</option>
+                <option value="custom" data-i18n="task.kind.custom">Другое</option>
               </select>
             </label>
-            <label>Title <input name="title" placeholder="short label"></label>
-            <label>Deadline <input name="deadline" type="datetime-local"></label>
-            <label class="wide">Content / AI prompt
-              <textarea name="payload" rows="3" placeholder="Text to post, or a prompt for the AI agent"></textarea>
+            <label><span data-i18n="task.title">Название</span> <input name="title" data-i18n-ph="task.title.ph" placeholder="краткая метка"></label>
+            <label><span data-i18n="task.deadline">Дедлайн</span> <input name="deadline" type="datetime-local"></label>
+            <label><span data-i18n="task.reminder">🔔 Напоминание</span> <input name="reminder" type="datetime-local"></label>
+            <label class="wide"><span data-i18n="task.content">Контент / промпт ИИ</span>
+              <textarea name="payload" rows="3" data-i18n-ph="task.content.ph" placeholder="Текст поста или промпт для ИИ-агента"></textarea>
             </label>
             <div class="form-actions">
-              <button type="submit">Queue task</button>
-              <span class="hint">Tasks start as <b>pending</b> — nothing runs until you approve.</span>
+              <button type="submit" data-i18n="task.queue">Поставить в очередь</button>
+              <span class="hint" data-i18n="task.hint">Задачи создаются как «ожидает» — ничего не выполнится без вашего одобрения.</span>
             </div>
           </form>
         </div>
         <div class="panel">
           <div class="panel-head">
-            <h2>Task queue</h2>
-            <div class="filters">
-              <select id="task-filter-status">
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="done">Done</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
+            <h2 data-i18n="task.queue.title">Очередь задач</h2>
+            <select id="task-filter-status">
+              <option value="" data-i18n="filter.all">Все статусы</option>
+              <option value="pending" data-i18n="status.pending">Ожидает</option>
+              <option value="approved" data-i18n="status.approved">Одобрено</option>
+              <option value="done" data-i18n="status.done">Выполнено</option>
+              <option value="rejected" data-i18n="status.rejected">Отклонено</option>
+            </select>
           </div>
           <div id="tasks-table" class="table-wrap"></div>
         </div>
@@ -117,18 +125,18 @@
       <section class="tab" id="tab-runs">
         <form id="workflow-form" class="run-grid">
           <div class="panel">
-            <div class="panel-head"><h2>Appium session</h2></div>
+            <div class="panel-head"><h2 data-i18n="run.session">Сессия Appium</h2></div>
             <label>Server URL <input name="server_url" value="http://127.0.0.1:4723"></label>
-            <label>Device <input name="device" value="emulator-5554"></label>
-            <label>Platform
+            <label><span data-i18n="run.device">Устройство</span> <input name="device" value="emulator-5554"></label>
+            <label><span data-i18n="run.platform">Платформа</span>
               <select name="platform"><option>Android</option><option>iOS</option></select>
             </label>
-            <label>Proxy <input name="proxy_string" placeholder="ip:port:login:pass"></label>
-            <button type="button" id="preview-proxy" class="ghost">Preview proxy</button>
+            <label><span data-i18n="acc.proxy">Прокси</span> <input name="proxy_string" placeholder="ip:port:login:pass"></label>
+            <button type="button" id="preview-proxy" class="ghost" data-i18n="run.preview">Проверить прокси</button>
             <output id="proxy-preview" class="hint"></output>
           </div>
           <div class="panel">
-            <div class="panel-head"><h2>Locators</h2></div>
+            <div class="panel-head"><h2 data-i18n="run.locators">Локаторы</h2></div>
             {% for field in ['read', 'input', 'submit'] %}
             <div class="locator">
               <span class="loc-label">{{ field }}</span>
@@ -142,21 +150,21 @@
             {% endfor %}
           </div>
           <div class="panel">
-            <div class="panel-head"><h2>AI agent</h2></div>
-            <label>System prompt <textarea name="system_prompt" rows="2" placeholder="You reply to messages."></textarea></label>
-            <label>Tone <input name="tone" placeholder="friendly, concise"></label>
-            <label>Fallback <input name="fallback" placeholder="Thanks!"></label>
+            <div class="panel-head"><h2 data-i18n="run.ai">ИИ-агент</h2></div>
+            <label><span data-i18n="run.prompt">Системный промпт</span> <textarea name="system_prompt" rows="2"></textarea></label>
+            <label><span data-i18n="acc.tone">Тон общения</span> <input name="tone"></label>
+            <label><span data-i18n="run.fallback">Резервный текст</span> <input name="fallback"></label>
             <label>Model <input name="model" value="gpt-4o-mini"></label>
-            <label>Base URL <input name="base_url" placeholder="local LLM (optional)"></label>
+            <label>Base URL <input name="base_url" placeholder="local LLM"></label>
           </div>
           <div class="panel run-actions">
-            <button type="submit" id="run">Run workflow</button>
-            <button type="button" id="clear-log" class="ghost">Clear log</button>
-            <span id="status" class="status idle">Idle</span>
+            <button type="submit" id="run" data-i18n="run.start">Запустить</button>
+            <button type="button" id="clear-log" class="ghost" data-i18n="run.clear">Очистить лог</button>
+            <span id="status" class="status idle" data-i18n="status.idle">Простой</span>
           </div>
         </form>
         <div class="panel">
-          <div class="panel-head"><h2>Log</h2><span id="result-badge"></span></div>
+          <div class="panel-head"><h2 data-i18n="run.log">Лог</h2><span id="result-badge"></span></div>
           <pre id="log"></pre>
         </div>
       </section>
@@ -164,7 +172,7 @@
       <!-- Statistics -->
       <section class="tab" id="tab-stats">
         <div class="panel">
-          <div class="panel-head"><h2>Per-account statistics</h2></div>
+          <div class="panel-head"><h2 data-i18n="stats.title">Статистика по аккаунтам</h2></div>
           <div id="stats-table" class="table-wrap"></div>
         </div>
       </section>
@@ -172,26 +180,27 @@
       <!-- Audit -->
       <section class="tab" id="tab-audit">
         <div class="panel">
-          <div class="panel-head"><h2>Audit log</h2></div>
-          <div id="audit-table" class="table-wrap"></div>
+          <div class="panel-head"><h2 data-i18n="audit.title">Журнал действий</h2></div>
+          <div id="audit-list"></div>
         </div>
       </section>
 
       <!-- Settings -->
       <section class="tab" id="tab-settings">
         <div class="panel">
-          <div class="panel-head"><h2>Settings</h2></div>
-          <p class="dim">Global defaults live here. Per-account tone, proxy and daily limits are set on each account.</p>
+          <div class="panel-head"><h2 data-i18n="nav.settings">Настройки</h2></div>
+          <p class="dim" data-i18n="settings.intro">Глобальные значения по умолчанию. Тон, прокси и лимиты задаются у каждого аккаунта.</p>
           <ul class="dim">
-            <li>Appium server &amp; AI model defaults come from environment (<code>E2E_*</code>).</li>
-            <li>Database: <code>mobile_e2e/web/data/dashboard.db</code>.</li>
-            <li>Guardrails: approval-gated actions, per-account daily limits, full audit trail.</li>
+            <li data-i18n="settings.env">Значения Appium и модели ИИ берутся из окружения (<code>E2E_*</code>).</li>
+            <li data-i18n="settings.db">База данных: <code>mobile_e2e/web/data/dashboard.db</code>.</li>
+            <li data-i18n="settings.guard">Гарантии: одобрение действий, дневные лимиты, полный журнал.</li>
           </ul>
         </div>
       </section>
     </main>
   </div>
 
+  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

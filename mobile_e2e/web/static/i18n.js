@@ -1,0 +1,129 @@
+"use strict";
+
+// Lightweight i18n: RU default, EN toggle. Static nodes carry data-i18n /
+// data-i18n-ph; dynamic strings call I18N.t(key).
+const TRANSLATIONS = {
+  ru: {
+    "nav.dashboard": "Дашборд", "nav.accounts": "Аккаунты", "nav.tasks": "Задачи",
+    "nav.runs": "Запуски", "nav.stats": "Статистика", "nav.audit": "Журнал",
+    "nav.settings": "Настройки",
+    "hint.hitl": "Человек в цикле · каждое действие подтверждаете вы",
+    "reminders.title": "Напоминания", "dash.accounts": "Обзор аккаунтов",
+    "acc.add": "Добавить аккаунт", "acc.name": "Имя", "acc.name.ph": "Клиент / аккаунт",
+    "acc.handle": "Хэндл", "acc.proxy": "Прокси", "acc.limit": "Дневной лимит",
+    "acc.tone": "Тон общения", "acc.tone.ph": "дружелюбно, кратко",
+    "acc.notes": "Заметки", "acc.notes.ph": "необязательно", "acc.add.btn": "Добавить",
+    "task.new": "Новая задача", "task.account": "Аккаунт", "task.type": "Тип",
+    "task.kind.post": "Пост", "task.kind.reply": "Ответ", "task.kind.ai": "Черновик ИИ",
+    "task.kind.custom": "Другое", "task.title": "Название", "task.title.ph": "краткая метка",
+    "task.deadline": "Дедлайн", "task.reminder": "🔔 Напоминание",
+    "task.content": "Контент / промпт ИИ", "task.content.ph": "Текст поста или промпт для ИИ-агента",
+    "task.queue": "Поставить в очередь",
+    "task.hint": "Задачи создаются как «ожидает» — ничего не выполнится без вашего одобрения.",
+    "task.queue.title": "Очередь задач",
+    "filter.all": "Все статусы",
+    "status.pending": "Ожидает", "status.approved": "Одобрено", "status.done": "Выполнено",
+    "status.rejected": "Отклонено", "status.failed": "Ошибка", "status.idle": "Простой",
+    "run.session": "Сессия Appium", "run.device": "Устройство", "run.platform": "Платформа",
+    "run.preview": "Проверить прокси", "run.locators": "Локаторы", "run.ai": "ИИ-агент",
+    "run.prompt": "Системный промпт", "run.fallback": "Резервный текст",
+    "run.start": "Запустить", "run.clear": "Очистить лог", "run.log": "Лог",
+    "run.starting": "--- запуск воркфлоу ---",
+    "stats.title": "Статистика по аккаунтам", "audit.title": "Журнал действий",
+    "settings.intro": "Глобальные значения по умолчанию. Тон, прокси и лимиты задаются у каждого аккаунта.",
+    "settings.env": "Значения Appium и модели ИИ берутся из окружения (E2E_*).",
+    "settings.db": "База данных: mobile_e2e/web/data/dashboard.db.",
+    "settings.guard": "Гарантии: одобрение действий, дневные лимиты, полный журнал.",
+    "card.accounts": "Аккаунты", "card.pending": "Ожидают одобрения",
+    "card.approved": "Одобрено", "card.done": "Выполнено",
+    "col.account": "Аккаунт", "col.handle": "Хэндл", "col.today": "Сегодня",
+    "col.pending": "Ожидает", "col.done": "Выполнено", "col.name": "Имя",
+    "col.proxy": "Прокси", "col.limit": "Лимит/день", "col.tone": "Тон",
+    "col.actions": "Действия", "col.title": "Название", "col.type": "Тип",
+    "col.deadline": "Дедлайн", "col.status": "Статус", "col.total": "Всего",
+    "col.approved": "Одобрено", "col.rejected": "Отклонено", "col.time": "Время",
+    "col.action": "Действие", "col.detail": "Детали", "col.reminder": "Напоминание",
+    "col.stage": "Этап", "col.task": "Задача",
+    "btn.approve": "Одобрить", "btn.reject": "Отклонить", "btn.done": "Готово",
+    "btn.delete": "Удалить",
+    "empty.accounts": "Аккаунтов пока нет.", "empty.accountsShort": "Аккаунтов нет — добавьте на вкладке «Аккаунты».",
+    "empty.tasks": "Очередь задач пуста.", "empty.data": "Данных пока нет.",
+    "empty.audit": "Активности пока нет.", "empty.reminders": "Активных напоминаний нет.",
+    "confirm.delete": "Удалить аккаунт", "reminder.due": "пора",
+    "day.today": "Сегодня", "day.yesterday": "Вчера", "msg.added": "Аккаунт добавлен.",
+  },
+  en: {
+    "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
+    "nav.runs": "Runs", "nav.stats": "Statistics", "nav.audit": "Audit",
+    "nav.settings": "Settings",
+    "hint.hitl": "Human-in-the-loop · every action needs your approval",
+    "reminders.title": "Reminders", "dash.accounts": "Accounts overview",
+    "acc.add": "Add account", "acc.name": "Name", "acc.name.ph": "Client / account",
+    "acc.handle": "Handle", "acc.proxy": "Proxy", "acc.limit": "Daily limit",
+    "acc.tone": "Tone of voice", "acc.tone.ph": "friendly, concise",
+    "acc.notes": "Notes", "acc.notes.ph": "optional", "acc.add.btn": "Add account",
+    "task.new": "New task", "task.account": "Account", "task.type": "Type",
+    "task.kind.post": "Post", "task.kind.reply": "Reply", "task.kind.ai": "AI draft",
+    "task.kind.custom": "Custom", "task.title": "Title", "task.title.ph": "short label",
+    "task.deadline": "Deadline", "task.reminder": "🔔 Reminder",
+    "task.content": "Content / AI prompt", "task.content.ph": "Text to post, or a prompt for the AI agent",
+    "task.queue": "Queue task",
+    "task.hint": "Tasks start as “pending” — nothing runs until you approve.",
+    "task.queue.title": "Task queue",
+    "filter.all": "All statuses",
+    "status.pending": "Pending", "status.approved": "Approved", "status.done": "Done",
+    "status.rejected": "Rejected", "status.failed": "Failed", "status.idle": "Idle",
+    "run.session": "Appium session", "run.device": "Device", "run.platform": "Platform",
+    "run.preview": "Preview proxy", "run.locators": "Locators", "run.ai": "AI agent",
+    "run.prompt": "System prompt", "run.fallback": "Fallback text",
+    "run.start": "Run workflow", "run.clear": "Clear log", "run.log": "Log",
+    "run.starting": "--- starting workflow ---",
+    "stats.title": "Per-account statistics", "audit.title": "Activity log",
+    "settings.intro": "Global defaults live here. Per-account tone, proxy and limits are set on each account.",
+    "settings.env": "Appium & AI model defaults come from environment (E2E_*).",
+    "settings.db": "Database: mobile_e2e/web/data/dashboard.db.",
+    "settings.guard": "Guardrails: approval-gated actions, daily limits, full audit trail.",
+    "card.accounts": "Accounts", "card.pending": "Pending approval",
+    "card.approved": "Approved", "card.done": "Done",
+    "col.account": "Account", "col.handle": "Handle", "col.today": "Today",
+    "col.pending": "Pending", "col.done": "Done", "col.name": "Name",
+    "col.proxy": "Proxy", "col.limit": "Limit/day", "col.tone": "Tone",
+    "col.actions": "Actions", "col.title": "Title", "col.type": "Type",
+    "col.deadline": "Deadline", "col.status": "Status", "col.total": "Total",
+    "col.approved": "Approved", "col.rejected": "Rejected", "col.time": "Time",
+    "col.action": "Action", "col.detail": "Detail", "col.reminder": "Reminder",
+    "col.stage": "Stage", "col.task": "Task",
+    "btn.approve": "Approve", "btn.reject": "Reject", "btn.done": "Mark done",
+    "btn.delete": "Delete",
+    "empty.accounts": "No accounts yet.", "empty.accountsShort": "No accounts — add one in the Accounts tab.",
+    "empty.tasks": "No tasks in the queue.", "empty.data": "No data yet.",
+    "empty.audit": "No activity yet.", "empty.reminders": "No active reminders.",
+    "confirm.delete": "Delete account", "reminder.due": "due",
+    "day.today": "Today", "day.yesterday": "Yesterday", "msg.added": "Account added.",
+  },
+};
+
+const I18N = {
+  lang: localStorage.getItem("smm_lang") || "ru",
+  onChange: null,
+  t(key) {
+    const l = TRANSLATIONS[this.lang] || TRANSLATIONS.ru;
+    return (key in l) ? l[key] : (TRANSLATIONS.en[key] || key);
+  },
+  apply(root = document) {
+    root.querySelectorAll("[data-i18n]").forEach(n => {
+      n.textContent = this.t(n.getAttribute("data-i18n"));
+    });
+    root.querySelectorAll("[data-i18n-ph]").forEach(n => {
+      n.setAttribute("placeholder", this.t(n.getAttribute("data-i18n-ph")));
+    });
+    document.documentElement.lang = this.lang;
+  },
+  setLang(lang) {
+    this.lang = lang;
+    localStorage.setItem("smm_lang", lang);
+    this.apply();
+    if (this.onChange) this.onChange();
+  },
+};
+window.I18N = I18N;

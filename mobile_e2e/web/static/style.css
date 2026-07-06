@@ -28,8 +28,11 @@
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
-  font: 14.5px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14.5px; line-height: 1.6; letter-spacing: .1px;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
+h1, h2, .brand-name { font-family: "Space Grotesk", "Manrope", system-ui, sans-serif; }
 .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
 
 /* Sidebar */
@@ -159,5 +162,30 @@ pre#log {
   padding: 14px; min-height: 160px; max-height: 340px; overflow: auto; white-space: pre-wrap;
   word-break: break-word; margin: 0; font: 12.5px/1.55 ui-monospace, Consolas, monospace;
 }
-code { background: var(--panel-2); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; }
-.empty { color: var(--dim); padding: 14px; text-align: center; }
+code { background: var(--panel-2); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
+.empty { color: var(--dim); padding: 20px; text-align: center; }
+
+/* Language toggle */
+.lang { display: flex; gap: 4px; margin-bottom: 10px; background: rgba(255,255,255,.05); padding: 3px; border-radius: 9px; }
+.lang button { flex: 1; padding: 5px 0; font-size: 12px; font-weight: 700; border-radius: 7px; background: transparent; color: #a9bbd8; box-shadow: none; }
+.lang button.active { background: linear-gradient(135deg, var(--blue), var(--blue-2)); color: #fff; }
+.lang button:hover { filter: none; }
+
+/* Reminders + due highlight */
+tr.due td { background: rgba(245,166,35,.10); }
+.due-tag { color: var(--warn); font-weight: 700; font-size: 11.5px; text-transform: uppercase; }
+.bell { color: var(--warn); font-size: 12.5px; font-weight: 600; }
+
+/* Audit timeline grouped by day */
+.day-head {
+  font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 13px; color: var(--blue-2);
+  margin: 16px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); text-transform: capitalize;
+}
+.day-head:first-child { margin-top: 0; }
+.audit-row { display: grid; grid-template-columns: 52px 150px 1fr 50px; gap: 12px; align-items: center; padding: 7px 6px; border-radius: 8px; font-size: 13px; }
+.audit-row:hover { background: var(--panel-2); }
+.audit-time { color: var(--dim); font-variant-numeric: tabular-nums; }
+.audit-action { color: var(--blue-2); }
+.audit-detail { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-acc { color: var(--dim); text-align: right; }
+@media (max-width: 640px) { .audit-row { grid-template-columns: 46px 1fr; } .audit-detail, .audit-acc { display: none; } }

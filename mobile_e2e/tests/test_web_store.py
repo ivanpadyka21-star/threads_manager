@@ -83,6 +83,26 @@ def test_audit_records_actions(store):
     assert "task.create" in actions
 
 
+def test_reminder_stored_and_listed(store):
+    acc = store.add_account(name="A")
+    store.add_task(account_id=acc["id"], title="with reminder", reminder="2026-07-10T09:00")
+    store.add_task(account_id=acc["id"], title="no reminder")
+    reminders = store.list_reminders()
+    assert len(reminders) == 1
+    assert reminders[0]["title"] == "with reminder"
+    assert reminders[0]["account_name"] == "A"
+    assert reminders[0]["status"] == "pending"
+
+
+def test_reminder_dropped_when_task_finished(store):
+    acc = store.add_account(name="A")
+    task = store.add_task(account_id=acc["id"], title="r", reminder="2026-07-10T09:00")
+    assert len(store.list_reminders()) == 1
+    store.set_task_status(task["id"], "done")
+    # Finished tasks no longer surface as active reminders.
+    assert store.list_reminders() == []
+
+
 def test_stats_and_per_account(store):
     acc = store.add_account(name="A")
     store.add_task(account_id=acc["id"], title="t")

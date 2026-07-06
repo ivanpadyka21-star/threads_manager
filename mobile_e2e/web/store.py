@@ -71,6 +71,7 @@ class Store:
                     payload TEXT DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'pending',
                     deadline TEXT,
+                    reminder TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -84,6 +85,19 @@ class Store:
                 );
                 """
             )
+        # Migrate older databases that predate newer columns.
+        self._ensure_column("tasks", "reminder", "TEXT")
+
+    def _ensure_column(self, table: str, column: str, decl: str) -> None:
+        with self._lock, self._conn:
+            cols = {
+                r["name"]
+                for r in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if column not in cols:
+                self._conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {decl}"
+                )
 
     # -- accounts -----------------------------------------------------------
     def add_account(self, **fields) -> dict:
@@ -165,16 +179,17 @@ class Store:
             "payload": fields.get("payload", "").strip(),
             "status": "pending",
             "deadline": (fields.get("deadline") or None),
+            "reminder": (fields.get("reminder") or None),
             "created_at": _now(),
             "updated_at": _now(),
         }
         with self._lock, self._conn:
             cur = self._conn.execute(
                 """INSERT INTO tasks
-                   (account_id, kind, title, payload, status, deadline,
+                   (account_id, kind, title, payload, status, deadline, reminder,
                     created_at, updated_at)
                    VALUES (:account_id, :kind, :title, :payload, :status,
-                           :deadline, :created_at, :updated_at)""",
+                           :deadline, :reminder, :created_at, :updated_at)""",
                 cols,
             )
             task_id = cur.lastrowid
@@ -197,6 +212,22 @@ class Store:
         query += " ORDER BY (deadline IS NULL), deadline ASC, created_at DESC"
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_reminders(self) -> List[dict]:
+        """Active reminders (tasks with a reminder that are not finished).
+
+        Each row carries the task's current ``status`` so the UI can show which
+        stage the task is at, plus the account name.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                """SELECT t.*, a.name AS account_name
+                   FROM tasks t LEFT JOIN accounts a ON a.id = t.account_id
+                   WHERE t.reminder IS NOT NULL
+                     AND t.status NOT IN ('done', 'rejected')
+                   ORDER BY t.reminder ASC"""
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def get_task(self, task_id: int) -> Optional[dict]:

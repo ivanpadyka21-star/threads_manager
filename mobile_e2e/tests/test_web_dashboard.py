@@ -102,6 +102,20 @@ def test_stats_and_audit(client):
     assert any(a["action"] == "account.create" for a in audit)
 
 
+def test_reminders_endpoint(client):
+    acc = _add_account(client)
+    client.post("/api/tasks", json={
+        "account_id": acc["id"], "title": "Ping", "reminder": "2026-07-10T09:00",
+    })
+    client.post("/api/tasks", json={"account_id": acc["id"], "title": "No reminder"})
+    res = client.get("/api/reminders")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert len(data) == 1
+    assert data[0]["title"] == "Ping"
+    assert data[0]["status"] == "pending"
+
+
 def test_run_uses_account_proxy(client):
     """POST /api/run should fall back to the account's stored proxy."""
     store = Store(":memory:")

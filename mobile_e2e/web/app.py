@@ -62,6 +62,10 @@ def create_app(
     def audit():
         return jsonify(db.list_audit())
 
+    @app.get("/api/reminders")
+    def reminders():
+        return jsonify(db.list_reminders())
+
     # -- accounts -----------------------------------------------------------
     @app.get("/api/accounts")
     def list_accounts():
