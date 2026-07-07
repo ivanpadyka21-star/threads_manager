@@ -243,6 +243,13 @@
               </div>
             </div>
             <div class="panel">
+              <div class="panel-head"><h2 data-i18n="agent.title">Автопилот (агент)</h2></div>
+              <div class="hint" data-i18n="agent.hint" style="margin-bottom:8px">Агент сам ставит задачи под ваш промт — создаёт черновики на одобрение, не публикует.</div>
+              <textarea id="agent-instruction" rows="3" data-i18n-ph="agent.ph" placeholder="напр. сделай 3 полезных поста про тайм-менеджмент и разложи на завтра"></textarea>
+              <div class="form-actions"><button id="agent-run" data-i18n="agent.run">Запустить агента</button></div>
+              <div id="agent-output"></div>
+            </div>
+            <div class="panel">
               <div class="panel-head"><h2 data-i18n="studio.saved">Сохранённые промты</h2></div>
               <div id="studio-prompts"></div>
             </div>

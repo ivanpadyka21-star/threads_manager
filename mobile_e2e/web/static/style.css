@@ -300,6 +300,11 @@ tbody tr { transition: background .12s; }
 .pc-text { width: 100%; margin: 0; resize: vertical; }
 .pc-foot { display: flex; gap: 8px; margin-top: 8px; }
 .modal-input { width: 100%; margin: 0; }
+#agent-output { margin-top: 10px; }
+.agent-step { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-left: 2px solid var(--accent); background: var(--panel-3); border-radius: 6px; margin-bottom: 6px; font-size: 12.5px; }
+.agent-step .as-name { font-family: "JetBrains Mono", monospace; color: var(--accent-2); }
+.agent-step .as-res { margin-left: auto; color: var(--ok); font-weight: 700; }
+.agent-answer { margin-top: 8px; font-size: 13px; white-space: pre-wrap; color: var(--text); }
 
 /* --- Content calendar ----------------------------------------------------- */
 .cal-nav { display: flex; gap: 6px; }

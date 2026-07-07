@@ -123,6 +123,11 @@ const TRANSLATIONS = {
     "studio.prompt_name": "Название промта", "studio.saved_ok": "Промт сохранён",
     "studio.need_briefs": "Добавьте хотя бы один пост", "studio.done": "Готово — задачи созданы.",
     "btn.save": "Сохранить", "msg.saved": "Сохранено",
+    "agent.title": "Автопилот (агент)",
+    "agent.hint": "Агент сам ставит задачи под ваш промт — создаёт черновики на одобрение, не публикует.",
+    "agent.ph": "напр. сделай 3 полезных поста про тайм-менеджмент и разложи на завтра",
+    "agent.run": "Запустить агента", "agent.need": "Введите инструкцию",
+    "agent.working": "Агент работает…", "agent.done": "Агент завершил",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -244,6 +249,11 @@ const TRANSLATIONS = {
     "studio.prompt_name": "Prompt name", "studio.saved_ok": "Prompt saved",
     "studio.need_briefs": "Add at least one post", "studio.done": "Done — tasks created.",
     "btn.save": "Save", "msg.saved": "Saved",
+    "agent.title": "Autopilot (agent)",
+    "agent.hint": "The agent sets tasks from your prompt — creates drafts for approval, never publishes.",
+    "agent.ph": "e.g. make 3 useful posts about time management and schedule them for tomorrow",
+    "agent.run": "Run agent", "agent.need": "Enter an instruction",
+    "agent.working": "Agent working…", "agent.done": "Agent finished",
   },
 };
 

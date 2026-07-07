@@ -547,6 +547,30 @@ async function createStudioTasks() {
     else { clearInterval(poll); renderDraftCards(res.batch_id, b.tasks); toast(tf("batch.drafted", { n: drafted }), "success"); loadStudioQuota(); }
   }, 1500);
 }
+// --- autopilot agent -------------------------------------------------------
+const AGENT_TOOL_LABEL = { list_accounts: "📋", get_analytics: "📊", create_tasks: "✍" };
+$("#agent-run").addEventListener("click", async () => {
+  const instruction = $("#agent-instruction").value.trim();
+  if (!instruction) { toast(t("agent.need"), "warn"); return; }
+  const btn = $("#agent-run"); const label = btn.textContent; btn.disabled = true; btn.textContent = "…";
+  const out = $("#agent-output"); out.innerHTML = `<div class="hint">${t("agent.working")}</div>`;
+  try {
+    const res = await jpost("/api/agent", { instruction, account_id: $("#studio-account").value ? Number($("#studio-account").value) : null });
+    out.innerHTML = "";
+    (res.steps || []).forEach(s => {
+      const line = el("div", { class: "agent-step" },
+        el("span", { class: "as-ic", text: AGENT_TOOL_LABEL[s.tool] || "•" }),
+        el("span", { class: "as-name", text: s.tool }),
+        el("span", { class: "as-res", text: s.result && s.result.created != null ? `+${s.result.created}` : "" }));
+      out.append(line);
+    });
+    out.append(el("div", { class: "agent-answer", text: res.answer || "" }));
+    toast(t("agent.done"), "success");
+    loadTasks();
+  } catch (err) { out.innerHTML = ""; toast(String(err), "error", 6000); }
+  btn.disabled = false; btn.textContent = label; loadStudioQuota();
+});
+
 // editable draft card (after generation) — save via PATCH
 function studioDraftCard(tk) {
   const card = el("div", { class: "post-card" });

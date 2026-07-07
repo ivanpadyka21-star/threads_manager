@@ -21,6 +21,7 @@ from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web import threads_client
+from mobile_e2e.web.agent import AgentRunner
 from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
 from mobile_e2e.web.publish import publish_task
@@ -268,6 +269,25 @@ def create_app(
     def delete_prompt(prompt_id: int):
         db.delete_prompt(prompt_id)
         return jsonify({"deleted": prompt_id})
+
+    # -- autonomous agent (Gemini function-calling) -------------------------
+    @app.post("/api/agent")
+    def agent_run():
+        data = request.get_json(silent=True) or {}
+        instruction = (data.get("instruction") or "").strip()
+        if not instruction:
+            return jsonify({"error": "instruction is required"}), 400
+        account_id = data.get("account_id")
+        runner = AgentRunner(
+            db, default_account_id=int(account_id) if account_id else None,
+        )
+        try:
+            result = runner.run(instruction)
+            db.record_event("ai.generate", "agent run", level="ok")
+            return jsonify(result)
+        except Exception as exc:  # noqa: BLE001 - surface agent failure
+            db.record_event("ai.error", str(exc)[:200], level="info")
+            return jsonify({"error": str(exc)}), 502
 
     # -- AI content planner -------------------------------------------------
     @app.post("/api/plan")
