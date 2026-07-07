@@ -173,6 +173,52 @@ def test_analytics_ai_route_degrades(client):
     assert body["answer"] is None and "error" in body and body["data"]
 
 
+def test_prompts_crud_routes(client):
+    res = client.post("/api/prompts", json={"name": "Plan A", "text": "5 posts"})
+    assert res.status_code == 201
+    pid = res.get_json()["id"]
+    assert any(p["id"] == pid for p in client.get("/api/prompts").get_json())
+    assert client.delete(f"/api/prompts/{pid}").status_code == 200
+    assert client.get("/api/prompts").get_json() == []
+
+
+def test_prompt_requires_fields(client):
+    assert client.post("/api/prompts", json={"name": "x"}).status_code == 400
+
+
+def test_patch_task_edits_text(client):
+    acc = _add_account(client)
+    task = client.post("/api/tasks", json={"account_id": acc["id"], "title": "x", "payload": "p"}).get_json()
+    res = client.patch(f"/api/tasks/{task['id']}", json={"result": "my edited text"})
+    assert res.status_code == 200 and res.get_json()["result"] == "my edited text"
+
+
+def test_patch_missing_task_404(client):
+    assert client.patch("/api/tasks/999", json={"result": "x"}).status_code == 404
+
+
+def test_plan_route(client):
+    from unittest.mock import MagicMock, patch
+    fake = MagicMock()
+    fake.generate_response.return_value = '["Post about coffee", "Monday motivation", "A useful tip"]'
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        res = client.post("/api/plan", json={"prompt": "3 posts, friendly"})
+    assert res.status_code == 200
+    briefs = res.get_json()["briefs"]
+    assert briefs == ["Post about coffee", "Monday motivation", "A useful tip"]
+
+
+def test_plan_requires_prompt(client):
+    assert client.post("/api/plan", json={}).status_code == 400
+
+
+def test_parse_briefs_variants():
+    from mobile_e2e.web.app import _parse_briefs
+    assert _parse_briefs('["a", "b"]') == ["a", "b"]
+    assert _parse_briefs("```json\n[\"x\", \"y\"]\n```") == ["x", "y"]
+    assert _parse_briefs("1. First\n2. Second\n- Third") == ["First", "Second", "Third"]
+
+
 def test_notifications_route(client):
     acc = _add_account(client)
     client.post("/api/tasks", json={"account_id": acc["id"], "title": "P", "reminder": "2000-01-01T00:00"})

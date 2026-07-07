@@ -21,6 +21,7 @@
         <button class="nav-item active" data-tab="dashboard"><span>▚</span> <em data-i18n="nav.dashboard">Дашборд</em></button>
         <button class="nav-item" data-tab="accounts"><span>◉</span> <em data-i18n="nav.accounts">Аккаунты</em></button>
         <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
+        <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
         <button class="nav-item" data-tab="calendar"><span>▦</span> <em data-i18n="nav.calendar">Календарь</em></button>
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
@@ -201,6 +202,57 @@
             </select>
           </div>
           <div id="tasks-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Studio -->
+      <section class="tab" id="tab-studio">
+        <div class="studio">
+          <div class="studio-left">
+            <div class="panel">
+              <div class="panel-head"><h2 data-i18n="studio.plan">Планирование</h2><span id="studio-quota" class="ai-quota"></span></div>
+              <label><span data-i18n="task.account">Аккаунт</span><select id="studio-account"></select></label>
+              <div class="two">
+                <label><span data-i18n="task.language">Язык</span>
+                  <select id="studio-lang">
+                    <option value="">—</option><option value="Ukrainian">Українська</option>
+                    <option value="Russian">Русский</option><option value="English">English</option>
+                    <option value="Polish">Polski</option><option value="German">Deutsch</option>
+                  </select>
+                </label>
+                <label><span data-i18n="task.length">Длина</span>
+                  <select id="studio-length">
+                    <option value="" data-i18n="len.auto">Авто</option>
+                    <option value="150" data-i18n="len.short">Короткий (~150)</option>
+                    <option value="300" data-i18n="len.medium">Средний (~300)</option>
+                    <option value="480" data-i18n="len.long">Длинный (~480)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="two">
+                <label><span data-i18n="batch.interval">Интервал (мин)</span><input id="studio-interval" type="number" min="1" value="90"></label>
+                <label><span data-i18n="batch.start">Старт</span><input id="studio-start" type="datetime-local"></label>
+              </div>
+              <label><span data-i18n="studio.style">Характер / стиль</span><input id="studio-style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно"></label>
+              <label><span data-i18n="studio.prompt">Промт для ИИ</span>
+                <textarea id="studio-prompt" rows="4" data-i18n-ph="studio.prompt.ph" placeholder="напр. 7 постов про продуктивность, дружелюбно, по одному совету"></textarea>
+              </label>
+              <div class="form-actions">
+                <button id="studio-plan" data-i18n="studio.do">Спланировать (ИИ)</button>
+                <button id="studio-save-prompt" class="ghost" data-i18n="studio.save">Сохранить промт</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h2 data-i18n="studio.saved">Сохранённые промты</h2></div>
+              <div id="studio-prompts"></div>
+            </div>
+          </div>
+          <div class="studio-right">
+            <div class="panel">
+              <div class="panel-head"><h2 data-i18n="studio.posts">Посты</h2><button id="studio-add" class="mini ghost" data-i18n="studio.add">+ пост</button></div>
+              <div id="studio-cards"></div>
+            </div>
+          </div>
         </div>
       </section>
 

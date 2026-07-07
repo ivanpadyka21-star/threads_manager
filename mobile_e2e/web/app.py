@@ -9,7 +9,9 @@ Then open http://127.0.0.1:5000 in a browser.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import threading
 import time
 
@@ -30,6 +32,26 @@ LOG = get_logger(__name__)
 
 # Default on-disk location for the dashboard database (gitignored).
 _DEFAULT_DB = os.path.join(os.path.dirname(__file__), "data", "dashboard.db")
+
+
+def _parse_briefs(raw: str, limit: int = 10) -> list:
+    """Extract a list of short post briefs from the AI planner's reply.
+
+    Accepts a JSON array (optionally fenced) or plain lines with bullets/numbers.
+    """
+    text = (raw or "").strip()
+    text = re.sub(r"^```[a-zA-Z]*", "", text).strip()
+    text = re.sub(r"```$", "", text).strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            out = [str(x).strip() for x in data if str(x).strip()]
+            if out:
+                return out[:limit]
+    except Exception:  # noqa: BLE001 - fall back to line parsing
+        pass
+    lines = [re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", ln).strip() for ln in text.splitlines()]
+    return [ln for ln in lines if ln][:limit]
 
 
 def create_app(
@@ -220,6 +242,55 @@ def create_app(
     def delete_task(task_id: int):
         db.delete_task(task_id)
         return jsonify({"deleted": task_id})
+
+    @app.patch("/api/tasks/<int:task_id>")
+    def update_task_route(task_id: int):
+        data = request.get_json(silent=True) or {}
+        task = db.update_task(task_id, **data)
+        if task is None:
+            return jsonify({"error": "task not found"}), 404
+        return jsonify(task)
+
+    # -- saved prompts ------------------------------------------------------
+    @app.get("/api/prompts")
+    def list_prompts():
+        return jsonify(db.list_prompts())
+
+    @app.post("/api/prompts")
+    def create_prompt():
+        data = request.get_json(silent=True) or {}
+        try:
+            return jsonify(db.add_prompt(data.get("name", ""), data.get("text", ""))), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.delete("/api/prompts/<int:prompt_id>")
+    def delete_prompt(prompt_id: int):
+        db.delete_prompt(prompt_id)
+        return jsonify({"deleted": prompt_id})
+
+    # -- AI content planner -------------------------------------------------
+    @app.post("/api/plan")
+    def plan():
+        data = request.get_json(silent=True) or {}
+        prompt = (data.get("prompt") or "").strip()
+        if not prompt:
+            return jsonify({"error": "prompt is required"}), 400
+        system_prompt = (
+            "You are a social-media content planner. From the user's request, "
+            "produce a plan of individual post briefs — short, concrete topics, "
+            "one per intended post. Infer how many posts they want (default 5, "
+            "max 10). Respond with ONLY a JSON array of short brief strings "
+            "(no numbering, no extra text)."
+        )
+        try:
+            raw = AIAgent(system_prompt).generate_response(prompt)
+            db.record_event("ai.generate", "content plan", level="ok")
+        except Exception as exc:  # noqa: BLE001 - surface planner failure
+            db.record_event("ai.error", str(exc)[:200], level="info")
+            return jsonify({"error": str(exc)}), 502
+        briefs = _parse_briefs(raw)
+        return jsonify({"briefs": briefs, "raw": raw})
 
     # -- Threads integration ------------------------------------------------
     @app.get("/api/threads/status")

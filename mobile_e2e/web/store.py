@@ -128,6 +128,12 @@ class Store:
                     action TEXT NOT NULL,
                     detail TEXT DEFAULT ''
                 );
+                CREATE TABLE IF NOT EXISTS prompts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
         # Migrate older databases that predate newer columns.
@@ -475,6 +481,54 @@ class Store:
                 "UPDATE tasks SET result = ?, updated_at = ? WHERE id = ?",
                 (result, _now(), task_id),
             )
+
+    def update_task(self, task_id: int, **fields) -> Optional[dict]:
+        """Update editable task fields (text, schedule, length, etc.)."""
+        allowed = {
+            "title", "payload", "result", "language", "style", "target",
+            "max_chars", "deadline", "reminder", "scheduled_for",
+        }
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return self.get_task(task_id)
+        updates["updated_at"] = _now()
+        sets = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["id"] = task_id
+        with self._lock, self._conn:
+            self._conn.execute(f"UPDATE tasks SET {sets} WHERE id = :id", updates)
+        return self.get_task(task_id)
+
+    # -- saved prompts ------------------------------------------------------
+    def add_prompt(self, name: str, text: str) -> dict:
+        name = (name or "").strip()
+        text = (text or "").strip()
+        if not name or not text:
+            raise ValueError("Prompt name and text are required.")
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "INSERT INTO prompts (name, text, created_at) VALUES (?, ?, ?)",
+                (name, text, _now()),
+            )
+            pid = cur.lastrowid
+        return self.get_prompt(pid)
+
+    def list_prompts(self) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM prompts ORDER BY created_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_prompt(self, prompt_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM prompts WHERE id = ?", (prompt_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_prompt(self, prompt_id: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM prompts WHERE id = ?", (prompt_id,))
 
     def _used_today(self, account_id: int) -> int:
         today = datetime.now(_TZ).date().isoformat()

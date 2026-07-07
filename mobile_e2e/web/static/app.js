@@ -100,12 +100,13 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "accounts") loadAccounts();
   if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
+  if (name === "studio") loadStudio();
   if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
@@ -448,6 +449,131 @@ $("#task-form").addEventListener("submit", async (e) => {
   await jpost("/api/tasks", data); e.target.reset(); loadTasks();
 });
 $("#task-filter-status").addEventListener("change", loadTasks);
+
+// --- Studio (AI planner + editable post cards + saved prompts) -------------
+async function loadStudio() {
+  const rows = await api("/api/accounts");
+  const sel = $("#studio-account"); sel.innerHTML = "";
+  rows.forEach(r => sel.append(el("option", { value: String(r.id), text: r.name + (r.handle ? ` (${r.handle})` : "") })));
+  loadStudioPrompts();
+  loadStudioQuota();
+  if (!$("#studio-cards").children.length) $("#studio-cards").innerHTML = `<div class="empty">${t("studio.empty")}</div>`;
+}
+async function loadStudioQuota() {
+  const wrap = $("#studio-quota"); if (!wrap) return;
+  try { const u = await api("/api/ai/usage");
+    wrap.className = "ai-quota" + (u.remaining_today <= 0 ? " danger" : (u.remaining_minute <= 0 ? " warn" : ""));
+    wrap.textContent = `${t("ai.quota")}: ${u.used_today}/${u.rpd} · ${u.used_minute}/${u.rpm}`;
+  } catch {}
+}
+async function loadStudioPrompts() {
+  const wrap = $("#studio-prompts");
+  const rows = await api("/api/prompts");
+  if (!rows.length) { wrap.innerHTML = `<div class="empty">${t("studio.no_prompts")}</div>`; return; }
+  wrap.innerHTML = "";
+  rows.forEach(p => {
+    const item = el("div", { class: "prompt-item" },
+      el("div", { class: "pi-body", onclick: () => { $("#studio-prompt").value = p.text; toast(t("studio.loaded"), "info", 1500); } },
+        el("div", { class: "pi-name", text: p.name }),
+        el("div", { class: "pi-text", text: p.text })),
+      el("button", { class: "mini danger", text: "✕", onclick: async () => { await api("/api/prompts/" + p.id, { method: "DELETE" }); loadStudioPrompts(); } }));
+    wrap.append(item);
+  });
+}
+// editable "brief" card (before generation)
+function studioBriefCard(text) {
+  const card = el("div", { class: "post-card" });
+  const ta = el("textarea", { class: "pc-text", rows: 2 }); ta.value = text || "";
+  card.append(el("div", { class: "pc-head" }, el("span", { class: "pc-tag", text: t("studio.brief") }),
+    el("button", { class: "mini danger", text: "✕", onclick: () => card.remove() })));
+  card.append(ta);
+  return card;
+}
+function renderPlanCards(briefs) {
+  const wrap = $("#studio-cards"); wrap.innerHTML = "";
+  briefs.forEach(b => wrap.append(studioBriefCard(b)));
+  const bar = el("div", { class: "form-actions", style: "margin-top:12px" },
+    el("button", { id: "studio-create", text: t("studio.create"), onclick: createStudioTasks }));
+  wrap.append(bar);
+}
+$("#studio-add").addEventListener("click", () => {
+  const wrap = $("#studio-cards");
+  if (wrap.querySelector(".empty")) wrap.innerHTML = "";
+  let bar = wrap.querySelector(".form-actions");
+  const card = studioBriefCard("");
+  if (bar) wrap.insertBefore(card, bar);
+  else { wrap.append(card); wrap.append(el("div", { class: "form-actions", style: "margin-top:12px" }, el("button", { id: "studio-create", text: t("studio.create"), onclick: createStudioTasks }))); }
+});
+$("#studio-plan").addEventListener("click", async () => {
+  const prompt = $("#studio-prompt").value.trim();
+  if (!prompt) { toast(t("studio.need_prompt"), "warn"); return; }
+  const btn = $("#studio-plan"); const label = btn.textContent; btn.disabled = true; btn.textContent = "…";
+  try {
+    const res = await jpost("/api/plan", { prompt });
+    if (!res.briefs || !res.briefs.length) { toast(t("studio.no_plan"), "warn"); }
+    else { renderPlanCards(res.briefs); toast(tf("studio.planned", { n: res.briefs.length }), "success"); }
+  } catch (err) { toast(String(err), "error", 6000); }
+  btn.disabled = false; btn.textContent = label; loadStudioQuota();
+});
+$("#studio-save-prompt").addEventListener("click", async () => {
+  const text = $("#studio-prompt").value.trim();
+  if (!text) { toast(t("studio.need_prompt"), "warn"); return; }
+  const nameEl = el("input", { class: "modal-input", placeholder: t("studio.prompt_name") });
+  const ok = await modal({ title: t("studio.save"), body: nameEl, actions: [
+    { label: t("btn.cancel"), value: false }, { label: t("btn.ok"), value: true, class: "grad" }] });
+  if (!ok || !nameEl.value.trim()) return;
+  await jpost("/api/prompts", { name: nameEl.value.trim(), text });
+  toast(t("studio.saved_ok"), "success"); loadStudioPrompts();
+});
+async function createStudioTasks() {
+  const briefs = $$("#studio-cards .pc-text").map(t => t.value.trim()).filter(Boolean).slice(0, 10);
+  if (!briefs.length) { toast(t("studio.need_briefs"), "warn"); return; }
+  const data = {
+    account_id: $("#studio-account").value ? Number($("#studio-account").value) : null,
+    briefs, language: $("#studio-lang").value, style: $("#studio-style").value,
+    interval_minutes: Number($("#studio-interval").value) || 90,
+    start_at: $("#studio-start").value || null,
+    max_chars: $("#studio-length").value ? Number($("#studio-length").value) : null,
+  };
+  const wrap = $("#studio-cards");
+  let res; try { res = await jpost("/api/batches", data); }
+  catch (err) { toast(String(err), "error"); return; }
+  const total = res.tasks.length;
+  wrap.innerHTML = `<div class="hint">${tf("batch.generating", { d: 0, n: total })}</div>`;
+  const poll = setInterval(async () => {
+    let b; try { b = await api("/api/batches/" + res.batch_id); } catch { return; }
+    const drafted = (b.status && b.status.drafted) || 0;
+    if (b.generating) wrap.innerHTML = `<div class="hint">${tf("batch.generating", { d: drafted, n: total })}</div>`;
+    else { clearInterval(poll); renderDraftCards(res.batch_id, b.tasks); toast(tf("batch.drafted", { n: drafted }), "success"); loadStudioQuota(); }
+  }, 1500);
+}
+// editable draft card (after generation) — save via PATCH
+function studioDraftCard(tk) {
+  const card = el("div", { class: "post-card" });
+  const max = tk.max_chars || 500;
+  const head = el("div", { class: "pc-head" },
+    el("span", { class: "pc-when", text: "🕒 " + fmtDate(tk.scheduled_for) }),
+    el("span", { class: "pc-count" }));
+  const ta = el("textarea", { class: "pc-text", rows: 4 }); ta.value = tk.result || tk.payload || "";
+  const counter = head.querySelector(".pc-count");
+  const upd = () => { counter.textContent = `${ta.value.length}/${max}`; counter.className = "pc-count" + (ta.value.length > max ? " over" : ""); };
+  ta.addEventListener("input", upd); upd();
+  const foot = el("div", { class: "pc-foot" },
+    el("button", { class: "mini", text: t("btn.save"), onclick: async () => { await api("/api/tasks/" + tk.id, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result: ta.value }) }); toast(t("msg.saved"), "success", 1500); } }),
+    el("button", { class: "mini danger", text: "✕", onclick: async () => { await api("/api/tasks/" + tk.id, { method: "DELETE" }); card.remove(); } }));
+  card.append(head, ta, foot);
+  return card;
+}
+function renderDraftCards(batchId, tasks) {
+  const wrap = $("#studio-cards"); wrap.innerHTML = "";
+  tasks.forEach(tk => wrap.append(studioDraftCard(tk)));
+  wrap.append(el("div", { class: "form-actions", style: "margin-top:12px" },
+    el("button", { class: "ok", text: t("batch.approve"), onclick: async () => {
+      const r = await jpost(`/api/batches/${batchId}/approve`);
+      toast(tf("batch.scheduled", { n: r.scheduled }), "success");
+      wrap.innerHTML = `<div class="empty">${t("studio.done")}</div>`; loadTasks();
+    }})));
+}
 
 // --- content calendar (week view) ------------------------------------------
 function startOfWeek(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }

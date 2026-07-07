@@ -205,6 +205,32 @@ def test_approve_batch_and_due(store):
     assert all(t["status"] == "scheduled" for t in due)
 
 
+def test_saved_prompts(store):
+    p = store.add_prompt("Weekly plan", "7 posts about X")
+    assert p["id"] > 0 and p["name"] == "Weekly plan"
+    assert len(store.list_prompts()) == 1
+    store.delete_prompt(p["id"])
+    assert store.list_prompts() == []
+
+
+def test_prompt_requires_name_and_text(store):
+    with pytest.raises(ValueError):
+        store.add_prompt("", "text")
+    with pytest.raises(ValueError):
+        store.add_prompt("name", "  ")
+
+
+def test_update_task_fields(store):
+    acc = store.add_account(name="A")
+    task = store.add_task(account_id=acc["id"], title="x", payload="old")
+    updated = store.update_task(task["id"], result="edited draft", max_chars=200)
+    assert updated["result"] == "edited draft"
+    assert updated["max_chars"] == 200
+    # unknown fields are ignored
+    store.update_task(task["id"], bogus="nope")
+    assert store.get_task(task["id"])["result"] == "edited draft"
+
+
 def test_notifications(store):
     acc = store.add_account(name="A")
     # a past reminder (due) + a recorded problem
