@@ -146,6 +146,7 @@ class Store:
         self._ensure_column("tasks", "batch_id", "TEXT DEFAULT ''")
         self._ensure_column("tasks", "max_chars", "INTEGER")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
+        self._ensure_column("accounts", "persona", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
 
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
@@ -171,6 +172,7 @@ class Store:
             "status": fields.get("status", "active"),
             "notes": fields.get("notes", "").strip(),
             "credentials_file": fields.get("credentials_file", "").strip(),
+            "persona": fields.get("persona", "").strip(),
             "created_at": _now(),
         }
         if not cols["name"]:
@@ -179,9 +181,10 @@ class Store:
             cur = self._conn.execute(
                 """INSERT INTO accounts
                    (name, handle, platform, proxy_string, daily_limit, tone,
-                    status, notes, credentials_file, created_at)
+                    status, notes, credentials_file, persona, created_at)
                    VALUES (:name, :handle, :platform, :proxy_string, :daily_limit,
-                           :tone, :status, :notes, :credentials_file, :created_at)""",
+                           :tone, :status, :notes, :credentials_file, :persona,
+                           :created_at)""",
                 cols,
             )
             account_id = cur.lastrowid
@@ -205,7 +208,7 @@ class Store:
     def update_account(self, account_id: int, **fields) -> Optional[dict]:
         allowed = {
             "name", "handle", "platform", "proxy_string",
-            "daily_limit", "tone", "status", "notes", "credentials_file",
+            "daily_limit", "tone", "status", "notes", "credentials_file", "persona",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

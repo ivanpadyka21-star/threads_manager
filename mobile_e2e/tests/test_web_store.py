@@ -25,6 +25,13 @@ def test_account_name_required(store):
         store.add_account(name="   ")
 
 
+def test_account_persona_stored(store):
+    acc = store.add_account(name="A", persona="sexologist, first person, playful, 18+")
+    assert store.get_account(acc["id"])["persona"] == "sexologist, first person, playful, 18+"
+    store.update_account(acc["id"], persona="updated persona")
+    assert store.get_account(acc["id"])["persona"] == "updated persona"
+
+
 def test_update_and_delete_account(store):
     acc = store.add_account(name="X")
     store.update_account(acc["id"], daily_limit=99, tone="formal")

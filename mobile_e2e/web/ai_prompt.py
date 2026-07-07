@@ -46,6 +46,7 @@ def build_ai_prompt(
 
     handle = (account.get("handle") or account.get("name") or "").strip()
     account_tone = (account.get("tone") or "").strip()
+    persona = (account.get("persona") or "").strip()
     language = (task.get("language") or "").strip()
     style = (task.get("style") or "").strip()
     target = (task.get("target") or "").strip()
@@ -56,6 +57,11 @@ def build_ai_prompt(
         "You are an SMM assistant drafting social media content for human review.",
         f"Write {action}" + (f" for the account {handle}." if handle else "."),
     ]
+    if persona:
+        sys_lines.append(
+            "Write AS this author, in the first person, matching their voice and "
+            f"their opted-in audience: {persona}"
+        )
     if language:
         sys_lines.append(f"Write strictly in this language: {language}.")
     voice = ", ".join(p for p in (account_tone, style) if p)
@@ -66,8 +72,8 @@ def build_ai_prompt(
         "may be terse (a topic, mood or wish, e.g. 'I want love') — treat it as "
         "the exact theme and write a complete post that embodies it. "
         "Do NOT invent events, dates, links, webinars or 'link in bio' calls to "
-        "action that the brief did not ask for. Keep it authentic and "
-        "appropriate; no hashtags unless asked. "
+        "action that the brief did not ask for. Keep it authentic and fitting "
+        "the account's persona and audience; no hashtags unless asked. "
         f"IMPORTANT: the whole post MUST be at most {char_limit} characters "
         "(it will be rejected otherwise). Be concise. "
         "Output only the content itself, no explanations."

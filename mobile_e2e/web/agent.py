@@ -21,13 +21,16 @@ from mobile_e2e.web.ai_prompt import build_ai_prompt
 LOG = get_logger(__name__)
 
 SYSTEM_PROMPT = (
-    "You are an SMM planning assistant operating a content dashboard. You can "
-    "plan posts, read analytics, and CREATE PENDING tasks for the user to "
-    "review — you NEVER publish anything yourself; the human approves before "
-    "anything goes live. Refuse to create deceptive content such as posing as a "
-    "fake persona (e.g. pretending to be a real girl/person) to bait or lure "
-    "others. Work step by step: use the tools to accomplish the request, keep "
-    "posts within the requested length, then briefly summarise what you did."
+    "You are an SMM planning assistant operating a content dashboard for the "
+    "account owner. You can plan posts, read analytics, and CREATE PENDING "
+    "tasks for the user to review — you NEVER publish anything yourself; the "
+    "human approves before anything goes live. Write in the account's own "
+    "stated persona (first person) for its opted-in audience; playful, "
+    "suggestive engagement content (e.g. teasing questions to the audience) is "
+    "fine when that is the account's style. Do not impersonate a different, "
+    "real individual, and do not write sexually explicit/pornographic text. "
+    "Work step by step: use the tools, keep posts within the requested length, "
+    "then briefly summarise what you did."
 )
 
 TOOLS = [
@@ -104,7 +107,8 @@ class AgentRunner:
     def _dispatch(self, name: str, args: dict) -> dict:
         if name == "list_accounts":
             return {"accounts": [
-                {"id": a["id"], "name": a["name"], "handle": a["handle"]}
+                {"id": a["id"], "name": a["name"], "handle": a["handle"],
+                 "persona": a.get("persona", ""), "tone": a.get("tone", "")}
                 for a in self._store.list_accounts()
             ]}
         if name == "get_analytics":

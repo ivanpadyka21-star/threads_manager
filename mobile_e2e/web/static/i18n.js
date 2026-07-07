@@ -130,6 +130,8 @@ const TRANSLATIONS = {
     "agent.working": "Агент работает…", "agent.done": "Агент завершил",
     "nav.structure": "Структура", "struct.title": "Архитектура проекта",
     "desc.structure": "Карта архитектуры: агенты, данные, публикация и связи.",
+    "acc.persona": "Персона (кто вы — ИИ пишет от вашего лица)",
+    "acc.persona.ph": "напр. СММ-сексолог, пишу от первого лица, дерзко и игриво, аудитория 18+, люблю тизеры и вопросы к мужчинам, которые заводят диалог в комментариях",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -258,6 +260,8 @@ const TRANSLATIONS = {
     "agent.working": "Agent working…", "agent.done": "Agent finished",
     "nav.structure": "Structure", "struct.title": "Project architecture",
     "desc.structure": "Architecture map: agents, data, publishing and connections.",
+    "acc.persona": "Persona (who you are — the AI writes as you)",
+    "acc.persona.ph": "e.g. SMM sexologist, first-person, bold & playful, 18+ audience, love teasers and questions to men that spark discussion in the comments",
   },
 };
 

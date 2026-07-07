@@ -19,6 +19,15 @@ def test_comment_prompt_includes_language_style_target():
     assert "Support the author" in user
 
 
+def test_persona_used_in_first_person():
+    system, _ = build_ai_prompt(
+        {"kind": "post", "payload": "утро"},
+        {"handle": "@me", "persona": "sexologist, bold and playful, 18+ audience"},
+    )
+    assert "first person" in system.lower()
+    assert "sexologist, bold and playful" in system
+
+
 def test_post_prompt_minimal():
     system, user = build_ai_prompt({"kind": "post", "payload": "Announce launch"})
     assert "an original post" in system
