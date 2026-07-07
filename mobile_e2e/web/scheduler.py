@@ -60,6 +60,9 @@ class PostScheduler:
                 if account and account["used_today"] >= account["daily_limit"]:
                     # Over the daily limit — leave scheduled, try again later.
                     continue
+            # Atomically claim it so a duplicate scheduler can't publish it too.
+            if not self._store.claim_scheduled_task(task["id"]):
+                continue
             try:
                 pid = publish_task(self._store, task["id"])
                 LOG.info("Scheduled post #%s published: %s", task["id"], pid)

@@ -486,8 +486,12 @@ def main() -> None:
         pass
     store = Store(os.getenv("E2E_WEB_DB", _DEFAULT_DB))
     app = create_app(store=store)
-    # Auto-publish scheduled batch posts in the background.
-    PostScheduler(store, interval_seconds=30).start()
+    # Auto-publish scheduled posts in the background — but only in the actual
+    # serving process. With the debug reloader, main() runs in BOTH the watcher
+    # parent and the worker child; starting the scheduler in both published
+    # every post twice. WERKZEUG_RUN_MAIN is set only in the worker child.
+    if os.getenv("E2E_WEB_DEBUG", "0") != "1" or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        PostScheduler(store, interval_seconds=30).start()
     host = os.getenv("E2E_WEB_HOST", "127.0.0.1")
     port = int(os.getenv("E2E_WEB_PORT", "5000"))
     # Set E2E_WEB_DEBUG=1 for the "workshop" mode: the reloader restarts the

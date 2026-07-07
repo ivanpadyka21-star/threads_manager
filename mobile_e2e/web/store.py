@@ -329,6 +329,21 @@ class Store:
         self.log("batch.approve", f"{count} posts scheduled", None)
         return count
 
+    def claim_scheduled_task(self, task_id: int) -> bool:
+        """Atomically claim a scheduled task for publishing.
+
+        Flips ``scheduled`` -> ``publishing`` in a single UPDATE; returns True
+        only for the caller that won the race, so concurrent workers can never
+        publish the same task twice.
+        """
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "UPDATE tasks SET status = 'publishing', updated_at = ? "
+                "WHERE id = ? AND status = 'scheduled'",
+                (_now(), task_id),
+            )
+            return cur.rowcount > 0
+
     def due_scheduled_tasks(self) -> List[dict]:
         """Scheduled tasks whose time has arrived (for the publisher)."""
         now = datetime.now(_TZ).replace(tzinfo=None).isoformat(timespec="minutes")

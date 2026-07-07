@@ -48,6 +48,24 @@ def test_tick_respects_daily_limit(store):
     pub.assert_not_called()
 
 
+def test_claim_scheduled_task_is_once_only(store):
+    acc = store.add_account(name="A")
+    task = _due_scheduled(store, acc["id"])
+    assert store.claim_scheduled_task(task["id"]) is True
+    assert store.claim_scheduled_task(task["id"]) is False  # already claimed
+    assert store.get_task(task["id"])["status"] == "publishing"
+
+
+def test_tick_does_not_double_publish(store):
+    acc = store.add_account(name="A", daily_limit=10)
+    _due_scheduled(store, acc["id"])
+    with patch("mobile_e2e.web.scheduler.publish_task", return_value="pid") as pub:
+        s = PostScheduler(store)
+        s.tick()
+        s.tick()  # a second tick (or a duplicate scheduler) must not re-publish
+    assert pub.call_count == 1
+
+
 def test_tick_flags_when_not_configured(store):
     acc = store.add_account(name="A", daily_limit=10)
     task = _due_scheduled(store, acc["id"])
