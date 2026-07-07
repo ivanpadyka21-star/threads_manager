@@ -461,8 +461,9 @@ function renderStructure() {
   const tx = (o) => o[L];
   // id: [x, y, w, h, cat, {ru,en title}, {ru,en sub}]
   const N = {
-    user:      [390, 16, 220, 56, "ui",       { ru: "СММ-специалист", en: "SMM specialist" }, { ru: "промты · одобрение", en: "prompts · approval" }],
-    dash:      [390, 106, 220, 56, "ui",       { ru: "Дашборд (Flask + UI)", en: "Dashboard (Flask + UI)" }, { ru: "вкладки · роуты · i18n", en: "tabs · routes · i18n" }],
+    user:      [180, 16, 220, 56, "ui",       { ru: "СММ-специалист", en: "SMM specialist" }, { ru: "промты · одобрение", en: "prompts · approval" }],
+    claude:    [556, 16, 244, 56, "agent",    { ru: "Claude (оркестратор)", en: "Claude (orchestrator)" }, { ru: "через API · направляет агента", en: "via API · directs the agent" }],
+    dash:      [300, 106, 220, 56, "ui",       { ru: "Дашборд (Flask + UI)", en: "Dashboard (Flask + UI)" }, { ru: "вкладки · роуты · i18n", en: "tabs · routes · i18n" }],
     studio:    [232, 200, 216, 60, "ai",       { ru: "Студия / Планировщик", en: "Studio / Planner" }, { ru: "промт → темы → задачи", en: "prompt → topics → tasks" }],
     agent:     [556, 200, 216, 60, "agent",    { ru: "Автопилот-агент", en: "Autopilot agent" }, { ru: "function-calling", en: "function-calling" }],
     gemini:    [812, 196, 168, 68, "ext",      { ru: "Gemini API", en: "Gemini API" }, { ru: "flash → lite (свап)", en: "flash → lite (fallback)" }],
@@ -504,6 +505,8 @@ function renderStructure() {
   };
   // connections
   arrow("user", "dash");
+  arrow("user", "claude", { fs: "r", ts: "l", dash: true, label: tx({ ru: "чат", en: "chat" }) });
+  arrow("claude", "agent", { dash: true, label: tx({ ru: "API", en: "API" }) });
   arrow("dash", "studio"); arrow("dash", "agent");
   arrow("studio", "gemini", { fs: "r", ts: "l", dash: true, label: tx({ ru: "ИИ", en: "AI" }) });
   arrow("agent", "gemini", { fs: "r", ts: "l", dash: true });

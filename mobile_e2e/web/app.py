@@ -14,6 +14,7 @@ import os
 import re
 import threading
 import time
+import uuid
 
 from flask import Flask, jsonify, render_template, request
 
@@ -271,6 +272,9 @@ def create_app(
         return jsonify({"deleted": prompt_id})
 
     # -- autonomous agent (Gemini function-calling) -------------------------
+    # In-memory conversation sessions so the agent has back-and-forth memory.
+    agent_sessions: dict = {}
+
     @app.post("/api/agent")
     def agent_run():
         data = request.get_json(silent=True) or {}
@@ -278,16 +282,20 @@ def create_app(
         if not instruction:
             return jsonify({"error": "instruction is required"}), 400
         account_id = data.get("account_id")
+        session_id = data.get("session_id")
+        history = agent_sessions.get(session_id) if session_id else None
         runner = AgentRunner(
             db, default_account_id=int(account_id) if account_id else None,
         )
         try:
-            result = runner.run(instruction)
+            result = runner.run(instruction, history=history)
             db.record_event("ai.generate", "agent run", level="ok")
-            return jsonify(result)
         except Exception as exc:  # noqa: BLE001 - surface agent failure
             db.record_event("ai.error", str(exc)[:200], level="info")
             return jsonify({"error": str(exc)}), 502
+        sid = session_id or uuid.uuid4().hex
+        agent_sessions[sid] = result.get("messages", [])
+        return jsonify({"session_id": sid, "answer": result["answer"], "steps": result["steps"]})
 
     # -- AI content planner -------------------------------------------------
     @app.post("/api/plan")

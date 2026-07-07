@@ -212,6 +212,20 @@ def test_plan_requires_prompt(client):
     assert client.post("/api/plan", json={}).status_code == 400
 
 
+def test_agent_route_keeps_session(client):
+    from unittest.mock import MagicMock, patch
+    fake = MagicMock()
+    fake.run.return_value = {"answer": "ok", "steps": [], "messages": [{"role": "user", "content": "x"}]}
+    with patch("mobile_e2e.web.app.AgentRunner", return_value=fake):
+        r1 = client.post("/api/agent", json={"instruction": "do it"}).get_json()
+        sid = r1["session_id"]
+        assert r1["answer"] == "ok" and sid
+        r2 = client.post("/api/agent", json={"instruction": "more", "session_id": sid}).get_json()
+        assert r2["session_id"] == sid
+    # second call passed the stored history
+    assert fake.run.call_args.kwargs.get("history") is not None
+
+
 def test_parse_briefs_variants():
     from mobile_e2e.web.app import _parse_briefs
     assert _parse_briefs('["a", "b"]') == ["a", "b"]

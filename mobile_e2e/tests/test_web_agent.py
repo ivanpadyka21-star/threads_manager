@@ -1,7 +1,7 @@
 """Tests for the autonomous planning agent (tool dispatch + loop)."""
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import openai
@@ -45,6 +45,18 @@ def test_dispatch_get_analytics(store):
 def test_dispatch_unknown_tool(store):
     r = AgentRunner(store, client=MagicMock(), model="m")
     assert "error" in r._dispatch("nope", {})
+
+
+def test_dispatch_generate_drafts_directs_writer(store):
+    acc = store.add_account(name="A")
+    batch = store.add_batch(account_id=acc["id"], briefs=["a", "b"])
+    r = AgentRunner(store, client=MagicMock(), model="m", default_account_id=acc["id"])
+    fake_writer = MagicMock()
+    fake_writer.generate_response.return_value = "draft text"
+    with patch("mobile_e2e.web.agent.AIAgent", return_value=fake_writer):
+        out = r._dispatch("generate_drafts", {"batch_id": batch["batch_id"]})
+    assert out["generated"] == 2
+    assert all(t["result"] == "draft text" for t in store.list_batch(batch["batch_id"]))
 
 
 # -- loop -------------------------------------------------------------------
@@ -98,6 +110,20 @@ def test_agent_switches_model_on_rate_limit(store):
     result = runner.run("hi")
     assert result["answer"] == "ok"
     assert client.chat.completions.create.call_count == 2  # switched to 2nd model
+
+
+def test_run_history_threaded(store):
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        _response(_message(content="first")),
+        _response(_message(content="second")),
+    ]
+    r1 = AgentRunner(store, client=client, model="m").run("hi")
+    assert r1["answer"] == "first"
+    r2 = AgentRunner(store, client=client, model="m").run("more", history=r1["messages"])
+    assert r2["answer"] == "second"
+    roles = [m["role"] for m in r2["messages"]]
+    assert roles.count("user") == 2  # conversation remembered
 
 
 def test_run_stops_at_step_limit(store):

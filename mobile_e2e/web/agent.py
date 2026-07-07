@@ -13,8 +13,10 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.ai.settings import get_ai_settings
 from mobile_e2e.utils.logger import get_logger
+from mobile_e2e.web.ai_prompt import build_ai_prompt
 
 LOG = get_logger(__name__)
 
@@ -57,6 +59,17 @@ TOOLS = [
             "style": {"type": "string"},
             "max_chars": {"type": "integer"},
         }, "required": ["posts"]},
+    }},
+    {"type": "function", "function": {
+        "name": "generate_drafts",
+        "description": (
+            "Direct the writer model to draft text for pending tasks that have "
+            "no draft yet (by batch_id, or all pending for the account). Does "
+            "NOT publish."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "batch_id": {"type": "string", "description": "Optional batch to draft."}
+        }},
     }},
 ]
 
@@ -116,6 +129,27 @@ class AgentRunner:
             self._store.log("agent.create_tasks", f"{len(posts)} pending posts", account_id)
             return {"created": len(batch["tasks"]), "batch_id": batch["batch_id"],
                     "status": "pending — awaiting your review/approval"}
+        if name == "generate_drafts":
+            # The manager agent directs the writer model to produce drafts.
+            batch_id = args.get("batch_id")
+            if batch_id:
+                tasks = self._store.list_batch(batch_id)
+            else:
+                tasks = [t for t in self._store.list_tasks(status="pending")
+                         if self._default_account_id in (None, t["account_id"])]
+            tasks = [t for t in tasks if not (t.get("result") or "").strip()][:10]
+            done = 0
+            for task in tasks:
+                account = self._store.get_account(task["account_id"]) if task["account_id"] else None
+                sys_p, usr_p = build_ai_prompt(task, account)
+                try:
+                    draft = AIAgent(sys_p).generate_response(usr_p)
+                    self._store.set_task_result(task["id"], draft)
+                    self._store.record_event("ai.generate", f"agent draft #{task['id']}", task["account_id"], level="ok")
+                    done += 1
+                except Exception as exc:  # noqa: BLE001 - degrade
+                    self._store.record_event("ai.error", str(exc)[:200], task["account_id"], level="info")
+            return {"generated": done}
         return {"error": f"unknown tool {name}"}
 
     def _create(self, messages):
@@ -134,19 +168,20 @@ class AgentRunner:
         raise last_error
 
     # -- loop ---------------------------------------------------------------
-    def run(self, instruction: str) -> dict:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": instruction},
-        ]
+    def run(self, instruction: str, history: Optional[list] = None) -> dict:
+        """Run one turn. Pass prior ``history`` (messages) for a conversation;
+        the returned ``messages`` can be persisted to continue it later."""
+        messages = list(history) if history else [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages.append({"role": "user", "content": instruction})
         steps = []
         for _ in range(self._max_steps):
             resp = self._create(messages)
             msg = resp.choices[0].message
             tool_calls = getattr(msg, "tool_calls", None)
             if not tool_calls:
+                messages.append({"role": "assistant", "content": msg.content or ""})
                 self._store.log("agent.run", instruction[:120])
-                return {"answer": msg.content or "", "steps": steps}
+                return {"answer": msg.content or "", "steps": steps, "messages": messages}
             messages.append({
                 "role": "assistant", "content": msg.content or "",
                 "tool_calls": [{
@@ -163,4 +198,4 @@ class AgentRunner:
                 steps.append({"tool": tc.function.name, "args": args, "result": result})
                 messages.append({"role": "tool", "tool_call_id": tc.id,
                                  "content": json.dumps(result, ensure_ascii=False)})
-        return {"answer": "Stopped after the step limit.", "steps": steps}
+        return {"answer": "Stopped after the step limit.", "steps": steps, "messages": messages}
