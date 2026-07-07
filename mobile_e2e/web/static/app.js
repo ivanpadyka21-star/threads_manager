@@ -38,6 +38,67 @@ function tdLimit(used, limit) {
   bar.append(fill); cell.append(bar); return cell;
 }
 
+// --- toasts ----------------------------------------------------------------
+const TOAST_ICON = { success: "✓", error: "⚠", warn: "!", info: "•" };
+function toast(message, type = "info", ms = 3400) {
+  const c = $("#toast-container"); if (!c) return;
+  const el_ = el("div", { class: "toast " + type },
+    el("span", { class: "toast-ic", text: TOAST_ICON[type] || "•" }),
+    el("span", { class: "toast-msg", text: String(message) }));
+  c.append(el_);
+  requestAnimationFrame(() => el_.classList.add("show"));
+  const close = () => { el_.classList.remove("show"); setTimeout(() => el_.remove(), 220); };
+  el_.addEventListener("click", close);
+  setTimeout(close, ms);
+}
+
+// --- modal -----------------------------------------------------------------
+function modal({ title, body, actions }) {
+  const root = $("#modal-root");
+  const box = el("div", { class: "modal-box" });
+  if (title) box.append(el("div", { class: "modal-head", text: title }));
+  const bodyEl = el("div", { class: "modal-body" });
+  if (typeof body === "string") bodyEl.textContent = body; else if (body) bodyEl.append(body);
+  box.append(bodyEl);
+  const foot = el("div", { class: "modal-foot" });
+  const overlay = el("div", { class: "modal-overlay" }, box);
+  const close = (val) => { overlay.classList.remove("show"); setTimeout(() => overlay.remove(), 180); overlay._resolve && overlay._resolve(val); };
+  (actions || [{ label: "OK", value: true }]).forEach(a => {
+    foot.append(el("button", { class: "mini " + (a.class || ""), text: a.label, onclick: () => close(a.value) }));
+  });
+  box.append(foot);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(undefined); });
+  root.append(overlay);
+  requestAnimationFrame(() => overlay.classList.add("show"));
+  return new Promise(res => { overlay._resolve = res; });
+}
+function confirmDialog(message, title) {
+  return modal({ title: title || t("confirm.title"), body: message, actions: [
+    { label: t("btn.cancel"), value: false, class: "" },
+    { label: t("btn.ok"), value: true, class: "danger" },
+  ]}).then(v => v === true);
+}
+function infoDialog(title, text) {
+  const pre = el("pre", { class: "modal-pre", text: text });
+  return modal({ title, body: pre, actions: [{ label: t("btn.close"), value: true }] });
+}
+
+// --- skeletons & empty states ----------------------------------------------
+function showSkeleton(wrap, rows = 3, kind = "row") {
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  const box = el("div", { class: "skel-box" });
+  for (let i = 0; i < rows; i++) box.append(el("div", { class: "skel skel-" + kind }));
+  wrap.append(box);
+}
+function emptyState(msg, hint, icon = "∅") {
+  const wrap = el("div", { class: "empty" });
+  wrap.append(el("div", { class: "empty-ic", text: icon }));
+  wrap.append(el("div", { class: "empty-msg", text: msg }));
+  if (hint) wrap.append(el("div", { class: "empty-hint", text: hint }));
+  return wrap;
+}
+
 // --- tabs ------------------------------------------------------------------
 const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
@@ -173,30 +234,64 @@ function renderAccountsOverview(rows) {
   wrap.innerHTML = ""; wrap.append(table);
 }
 
-// --- accounts --------------------------------------------------------------
+// --- accounts (cards) ------------------------------------------------------
+const AVATAR_GRAD = [
+  "linear-gradient(135deg,#ff318c,#b24bff)", "linear-gradient(135deg,#257bff,#2dd4bf)",
+  "linear-gradient(135deg,#ff9d2e,#ff318c)", "linear-gradient(135deg,#b24bff,#257bff)",
+  "linear-gradient(135deg,#2dd4bf,#257bff)", "linear-gradient(135deg,#ff5470,#ff9d2e)",
+];
+function initials(name) { return (name || "?").trim().slice(0, 2).toUpperCase(); }
+
 async function loadAccounts() {
-  const rows = await api("/api/accounts");
   const wrap = $("#accounts-table");
-  if (!rows.length) { wrap.innerHTML = `<div class="empty">${t("empty.accounts")}</div>`; return; }
-  const table = el("table");
-  table.append(headRow(["col.name", "col.handle", "col.proxy", "col.limit", "col.today", "col.tone", "col.actions"]));
-  rows.forEach(r => {
-    const del = el("button", { class: "mini danger", text: t("btn.delete"), onclick: async () => {
-      if (!confirm(`${t("confirm.delete")} "${r.name}"?`)) return;
-      await api("/api/accounts/" + r.id, { method: "DELETE" }); loadAccounts();
-    }});
-    table.append(el("tr", {}, td(r.name), td(r.handle || "—"), td(r.proxy_string ? "•••" : "—"),
-      td(String(r.daily_limit)), tdLimit(r.used_today, r.daily_limit), td(r.tone || "—"),
-      el("td", { class: "actions" }, del)));
+  showSkeleton(wrap, 3, "card");
+  const [rows, analytics] = await Promise.all([api("/api/accounts"), api("/api/analytics").catch(() => ({ accounts: [] }))]);
+  if (!rows.length) { wrap.innerHTML = ""; wrap.append(emptyState(t("empty.accounts"), t("empty.accounts.hint"), "◉")); return; }
+  const anaById = Object.fromEntries((analytics.accounts || []).map(a => [a.id, a]));
+  const grid = el("div", { class: "acct-grid" });
+  rows.forEach((r, i) => {
+    const a = anaById[r.id] || {};
+    const card = el("div", { class: "acct-card" });
+    // header: avatar + name + status dot
+    const av = el("div", { class: "acct-av", text: initials(r.name) });
+    av.style.background = AVATAR_GRAD[i % AVATAR_GRAD.length];
+    const head = el("div", { class: "acct-head" }, av,
+      el("div", { class: "acct-id" },
+        el("div", { class: "acct-name", text: r.name }),
+        el("div", { class: "acct-handle", text: r.handle || "—" })),
+      el("span", { class: "dot " + (a.state || "new"), title: t("state." + (a.state || "new")) }));
+    card.append(head);
+    // sparkline
+    if (a.sparkline) { const sp = el("div", { class: "acct-spark" }); sp.append(barChart(a.sparkline, 240, 34)); card.append(sp); }
+    // meta row: limit bar + score
+    const meta = el("div", { class: "acct-meta" });
+    const lim = el("div", { class: "acct-lim" });
+    lim.append(el("div", { class: "pill", text: `${r.used_today}/${r.daily_limit}` }));
+    const bar = el("div", { class: "limit-bar" }); const fill = el("i");
+    fill.style.width = (r.daily_limit ? Math.min(100, Math.round(r.used_today / r.daily_limit * 100)) : 0) + "%";
+    bar.append(fill); lim.append(bar); meta.append(lim);
+    const sc = el("span", { class: "score-chip", text: a.score == null ? "—" : a.score + "%" });
+    sc.style.color = scoreColor(a.score); meta.append(sc);
+    card.append(meta);
+    // footer: tone + proxy + delete
+    const foot = el("div", { class: "acct-foot" });
+    foot.append(el("span", { class: "acct-tone", text: r.tone || "—" }));
+    foot.append(el("span", { class: "acct-proxy " + (r.proxy_string ? "on" : ""), text: r.proxy_string ? "proxy" : "" }));
+    foot.append(el("button", { class: "mini danger", text: t("btn.delete"), onclick: async () => {
+      if (!await confirmDialog(`${t("confirm.delete")} "${r.name}"?`)) return;
+      await api("/api/accounts/" + r.id, { method: "DELETE" });
+      toast(t("msg.deleted"), "success"); loadAccounts();
+    }}));
+    card.append(foot);
+    grid.append(card);
   });
-  wrap.innerHTML = ""; wrap.append(table);
+  wrap.innerHTML = ""; wrap.append(grid);
 }
 $("#account-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
-  const msg = $("#account-msg");
-  try { await jpost("/api/accounts", data); e.target.reset(); msg.className = "hint"; msg.textContent = t("msg.added"); loadAccounts(); }
-  catch (err) { msg.className = "hint error"; msg.textContent = String(err); }
+  try { await jpost("/api/accounts", data); e.target.reset(); toast(t("msg.added"), "success"); loadAccounts(); }
+  catch (err) { toast(String(err), "error"); }
 });
 
 // --- tasks -----------------------------------------------------------------
@@ -224,7 +319,7 @@ $("#batch-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const briefs = (fd.get("briefs") || "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 10);
-  if (!briefs.length) { alert("Add at least one topic line"); return; }
+  if (!briefs.length) { toast(t("batch.need_briefs"), "warn"); return; }
   const data = {
     account_id: fd.get("account_id") ? Number(fd.get("account_id")) : null,
     briefs, language: fd.get("language"), style: fd.get("style"),
@@ -236,7 +331,8 @@ $("#batch-form").addEventListener("submit", async (e) => {
   try {
     const res = await jpost("/api/batches", data);
     renderBatchPreview(res.batch_id, res.tasks);
-  } catch (err) { alert("Error: " + err); }
+    toast(tf("batch.drafted", { n: res.drafted != null ? res.drafted : res.tasks.length }), "success");
+  } catch (err) { toast(String(err), "error"); }
   btn.disabled = false; btn.textContent = label;
   loadAiUsage();
 });
@@ -253,7 +349,8 @@ function renderBatchPreview(batchId, tasks) {
   });
   const approve = el("button", { class: "ok", text: t("batch.approve"), onclick: async () => {
     const r = await jpost(`/api/batches/${batchId}/approve`);
-    wrap.innerHTML = `<div class="hint">OK — ${tf("batch.scheduled", { n: r.scheduled })}</div>`;
+    wrap.innerHTML = "";
+    toast(tf("batch.scheduled", { n: r.scheduled }), "success");
     loadTasks();
   }});
   const bar = el("div", { class: "form-actions", style: "margin-top:12px" }); bar.append(approve);
@@ -261,11 +358,12 @@ function renderBatchPreview(batchId, tasks) {
 }
 async function loadTasks() {
   const status = $("#task-filter-status").value;
+  const wrap = $("#tasks-table");
+  showSkeleton(wrap, 4, "row");
   const [rows, accounts] = await Promise.all([
     api("/api/tasks" + (status ? "?status=" + status : "")), api("/api/accounts"),
   ]);
-  const wrap = $("#tasks-table");
-  if (!rows.length) { wrap.innerHTML = `<div class="empty">${t("empty.tasks")}</div>`; return; }
+  if (!rows.length) { wrap.innerHTML = ""; wrap.append(emptyState(t("empty.tasks"), null, "☑")); return; }
   const nameById = Object.fromEntries(accounts.map(a => [a.id, a.name]));
   const table = el("table");
   table.append(headRow(["col.title", "col.account", "col.type", "col.deadline", "col.reminder", "col.status", "col.actions"]));
@@ -280,7 +378,9 @@ async function loadTasks() {
       actions.append(el("button", { class: "mini", text: t("btn.done"), onclick: () => setTaskStatus(tk.id, "done") }));
     }
     actions.append(el("button", { class: "mini danger", text: "✕", title: t("btn.delete"), onclick: async () => {
-      await api("/api/tasks/" + tk.id, { method: "DELETE" }); loadTasks(); if (currentTab === "dashboard") loadDashboard();
+      if (!await confirmDialog(`${t("confirm.delete.task")} "${tk.title || "—"}"?`)) return;
+      await api("/api/tasks/" + tk.id, { method: "DELETE" }); toast(t("msg.deleted"), "success");
+      loadTasks(); if (currentTab === "dashboard") loadDashboard();
     }}));
     const rem = tk.reminder ? el("span", { class: "bell", text: "🔔 " + fmtDate(tk.reminder) }) : el("span", { class: "pill", text: "—" });
     table.append(el("tr", {}, td(tk.title || "—"), td(nameById[tk.account_id] || "—"),
@@ -291,14 +391,14 @@ async function loadTasks() {
 }
 async function approveTask(id) {
   try { await jpost(`/api/tasks/${id}/approve`); loadTasks(); if (currentTab === "dashboard") loadDashboard(); }
-  catch (err) { alert(err); }
+  catch (err) { toast(String(err), "error"); }
 }
 async function setTaskStatus(id, status) { await jpost(`/api/tasks/${id}/status`, { status }); loadTasks(); }
 async function publishTask(id) {
   try {
     const res = await jpost(`/api/tasks/${id}/publish`);
-    alert(t("th.published") + " (id " + res.published_id + ")");
-  } catch (err) { alert("⚠ " + err); }
+    toast(t("th.published") + " (id " + res.published_id + ")", "success");
+  } catch (err) { toast(String(err), "error", 6000); }
   loadTasks(); loadAiUsage(); if (currentTab === "dashboard") loadDashboard();
 }
 async function loadThreadsStatus() {
@@ -320,12 +420,12 @@ async function loadThreadsStatus() {
 async function executeTask(id) {
   try {
     const res = await jpost(`/api/tasks/${id}/execute`);
-    alert(t("an.draft") + ":\n\n" + (res.result || ""));
+    await infoDialog(t("an.draft"), res.result || "");
   } catch (err) {
     // On AI failure the backend auto-flags the task as a problem.
-    alert("⚠ " + err);
+    toast(String(err), "error", 6000);
   }
-  loadTasks(); if (currentTab === "dashboard") loadDashboard();
+  loadTasks(); loadAiUsage(); if (currentTab === "dashboard") loadDashboard();
 }
 $("#task-form").addEventListener("submit", async (e) => {
   e.preventDefault();

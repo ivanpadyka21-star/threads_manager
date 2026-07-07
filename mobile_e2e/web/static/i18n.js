@@ -102,6 +102,11 @@ const TRANSLATIONS = {
     "batch.preview": "Черновики пакета", "batch.approve": "Подтвердить и запланировать",
     "batch.scheduled": "Запланировано постов: {n}", "batch.at": "в",
     "ai.quota": "Квота Gemini", "ai.today": "сегодня", "ai.min": "за минуту",
+    "confirm.title": "Подтверждение", "confirm.delete.task": "Удалить задачу",
+    "btn.cancel": "Отмена", "btn.ok": "ОК", "btn.close": "Закрыть",
+    "msg.deleted": "Удалено", "batch.need_briefs": "Добавьте хотя бы одну тему",
+    "batch.drafted": "Черновиков создано: {n}",
+    "empty.accounts.hint": "Добавьте первый аккаунт в форме выше",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -202,6 +207,11 @@ const TRANSLATIONS = {
     "batch.preview": "Batch drafts", "batch.approve": "Approve & schedule",
     "batch.scheduled": "Scheduled posts: {n}", "batch.at": "at",
     "ai.quota": "Gemini quota", "ai.today": "today", "ai.min": "per minute",
+    "confirm.title": "Confirm", "confirm.delete.task": "Delete task",
+    "btn.cancel": "Cancel", "btn.ok": "OK", "btn.close": "Close",
+    "msg.deleted": "Deleted", "batch.need_briefs": "Add at least one topic",
+    "batch.drafted": "Drafts created: {n}",
+    "empty.accounts.hint": "Add your first account in the form above",
   },
 };
 
