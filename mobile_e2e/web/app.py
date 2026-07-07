@@ -10,6 +10,7 @@ Then open http://127.0.0.1:5000 in a browser.
 from __future__ import annotations
 
 import os
+import threading
 import time
 
 from flask import Flask, jsonify, render_template, request
@@ -51,6 +52,31 @@ def create_app(
             db.record_event("run.error", str(detail)[:200], job.account_id, level="error")
 
     jobs = job_manager or JobManager(on_done=_record_run)
+
+    # Background batch draft generation (so a 10-post request never blocks/times out).
+    batch_gen: dict = {}
+    batch_lock = threading.Lock()
+
+    def _generate_batch_async(batch_id: str) -> None:
+        delay = float(os.getenv("E2E_AI_BATCH_DELAY", "0"))
+        tasks = db.list_batch(batch_id)
+        for i, task in enumerate(tasks):
+            account = db.get_account(task["account_id"]) if task["account_id"] else None
+            system_prompt, user_prompt = build_ai_prompt(task, account)
+            try:
+                draft = AIAgent(system_prompt).generate_response(user_prompt)
+                db.set_task_result(task["id"], draft)
+                db.record_event("ai.generate", f"batch draft #{task['id']}", task["account_id"], level="ok")
+                with batch_lock:
+                    batch_gen[batch_id]["drafted"] += 1
+            except Exception as exc:  # noqa: BLE001 - degrade; leave draft empty
+                db.record_event("ai.error", str(exc)[:200], task["account_id"], level="info")
+            with batch_lock:
+                batch_gen[batch_id]["attempted"] += 1
+            if delay and i < len(tasks) - 1:
+                time.sleep(delay)
+        with batch_lock:
+            batch_gen[batch_id]["done"] = True
 
     # -- pages --------------------------------------------------------------
     @app.get("/")
@@ -237,6 +263,7 @@ def create_app(
         if not briefs:
             return jsonify({"error": "provide briefs or topic+count"}), 400
         account_id = data.get("account_id")
+        max_chars = data.get("max_chars")
         try:
             batch = db.add_batch(
                 account_id=int(account_id) if account_id else None,
@@ -245,36 +272,32 @@ def create_app(
                 style=data.get("style", ""),
                 interval_minutes=int(data.get("interval_minutes") or 60),
                 start_at=data.get("start_at") or None,
+                max_chars=int(max_chars) if max_chars else None,
             )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
-        # Generate a draft for each post so the user can review before scheduling.
-        # A small optional delay (E2E_AI_BATCH_DELAY seconds) helps stay under the
-        # provider's per-minute rate limit on big batches.
-        delay = float(os.getenv("E2E_AI_BATCH_DELAY", "0"))
-        drafted = 0
-        for i, task in enumerate(batch["tasks"]):
-            account = db.get_account(task["account_id"]) if task["account_id"] else None
-            system_prompt, user_prompt = build_ai_prompt(task, account)
-            try:
-                draft = AIAgent(system_prompt).generate_response(user_prompt)
-                db.set_task_result(task["id"], draft)
-                db.record_event("ai.generate", f"batch draft #{task['id']}", task["account_id"], level="ok")
-                drafted += 1
-            except Exception as exc:  # noqa: BLE001 - degrade; leave draft empty
-                db.record_event("ai.error", str(exc)[:200], task["account_id"], level="info")
-            if delay and i < len(batch["tasks"]) - 1:
-                time.sleep(delay)
+        # Generate drafts in the background so the request returns immediately;
+        # the UI polls GET /api/batches/<id> for progress.
+        with batch_lock:
+            batch_gen[batch["batch_id"]] = {
+                "total": len(batch["tasks"]), "drafted": 0, "attempted": 0, "done": False,
+            }
+        threading.Thread(
+            target=_generate_batch_async, args=(batch["batch_id"],), daemon=True
+        ).start()
         return jsonify({
-            "batch_id": batch["batch_id"],
-            "tasks": db.list_batch(batch["batch_id"]),
-            "drafted": drafted,
-            "usage": db.ai_usage(),
-        }), 201
+            "batch_id": batch["batch_id"], "tasks": batch["tasks"], "generating": True,
+        }), 202
 
     @app.get("/api/batches/<batch_id>")
     def get_batch(batch_id: str):
-        return jsonify(db.list_batch(batch_id))
+        with batch_lock:
+            st = dict(batch_gen.get(batch_id, {}))
+        return jsonify({
+            "tasks": db.list_batch(batch_id),
+            "status": st,
+            "generating": bool(st) and not st.get("done", False),
+        })
 
     @app.post("/api/batches/<batch_id>/approve")
     def approve_batch(batch_id: str):

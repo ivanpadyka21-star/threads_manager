@@ -1,5 +1,6 @@
 """Tests for the background PostScheduler and batch routes."""
 
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -68,31 +69,49 @@ def client():
     store.close()
 
 
+def _create_batch_and_wait(c, body, fake):
+    """Create a batch and wait for background draft generation (patch stays on)."""
+    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
+        res = c.post("/api/batches", json=body)
+        assert res.status_code == 202
+        bid = res.get_json()["batch_id"]
+        for _ in range(300):
+            b = c.get(f"/api/batches/{bid}").get_json()
+            if not b["generating"]:
+                return bid, b
+            time.sleep(0.01)
+        return bid, b
+
+
 def test_create_batch_generates_drafts(client):
     c, store = client
     acc = store.add_account(name="A")
     fake = MagicMock()
     fake.generate_response.side_effect = ["draft one", "draft two"]
-    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
-        res = c.post("/api/batches", json={
-            "account_id": acc["id"], "briefs": ["t1", "t2"],
-            "interval_minutes": 15, "language": "English",
-        })
-    assert res.status_code == 201
-    tasks = res.get_json()["tasks"]
+    _, b = _create_batch_and_wait(c, {
+        "account_id": acc["id"], "briefs": ["t1", "t2"],
+        "interval_minutes": 15, "language": "English",
+    }, fake)
+    tasks = b["tasks"]
     assert len(tasks) == 2
     assert {t["result"] for t in tasks} == {"draft one", "draft two"}
     assert all(t["status"] == "pending" for t in tasks)
+
+
+def test_create_batch_passes_max_chars(client):
+    c, store = client
+    acc = store.add_account(name="A")
+    fake = MagicMock(); fake.generate_response.return_value = "d"
+    _, b = _create_batch_and_wait(c, {"account_id": acc["id"], "briefs": ["x"], "max_chars": 150}, fake)
+    assert b["tasks"][0]["max_chars"] == 150
 
 
 def test_create_batch_from_topic_count(client):
     c, store = client
     acc = store.add_account(name="A")
     fake = MagicMock(); fake.generate_response.return_value = "d"
-    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
-        res = c.post("/api/batches", json={"account_id": acc["id"], "topic": "love", "count": 4})
-    assert res.status_code == 201
-    assert len(res.get_json()["tasks"]) == 4
+    _, b = _create_batch_and_wait(c, {"account_id": acc["id"], "topic": "love", "count": 4}, fake)
+    assert len(b["tasks"]) == 4
 
 
 def test_create_batch_requires_input(client):
@@ -104,9 +123,7 @@ def test_approve_batch_route(client):
     c, store = client
     acc = store.add_account(name="A")
     fake = MagicMock(); fake.generate_response.return_value = "d"
-    with patch("mobile_e2e.web.app.AIAgent", return_value=fake):
-        batch = c.post("/api/batches", json={"account_id": acc["id"], "briefs": ["a", "b", "c"]}).get_json()
-    res = c.post(f"/api/batches/{batch['batch_id']}/approve")
+    bid, _ = _create_batch_and_wait(c, {"account_id": acc["id"], "briefs": ["a", "b", "c"]}, fake)
+    res = c.post(f"/api/batches/{bid}/approve")
     assert res.status_code == 200 and res.get_json()["scheduled"] == 3
-    # tasks now scheduled
-    assert all(t["status"] == "scheduled" for t in c.get(f"/api/batches/{batch['batch_id']}").get_json())
+    assert all(t["status"] == "scheduled" for t in c.get(f"/api/batches/{bid}").get_json()["tasks"])

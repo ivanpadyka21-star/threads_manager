@@ -107,6 +107,11 @@ const TRANSLATIONS = {
     "msg.deleted": "Удалено", "batch.need_briefs": "Добавьте хотя бы одну тему",
     "batch.drafted": "Черновиков создано: {n}",
     "empty.accounts.hint": "Добавьте первый аккаунт в форме выше",
+    "nav.calendar": "Календарь", "desc.calendar": "Запланированные посты по дням недели.",
+    "cal.today": "Сегодня",
+    "task.length": "Длина", "len.auto": "Авто", "len.short": "Короткий (~150)",
+    "len.medium": "Средний (~300)", "len.long": "Длинный (~480)",
+    "batch.generating": "Генерация черновиков {d}/{n}…",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -212,6 +217,11 @@ const TRANSLATIONS = {
     "msg.deleted": "Deleted", "batch.need_briefs": "Add at least one topic",
     "batch.drafted": "Drafts created: {n}",
     "empty.accounts.hint": "Add your first account in the form above",
+    "nav.calendar": "Calendar", "desc.calendar": "Scheduled posts by day of week.",
+    "cal.today": "Today",
+    "task.length": "Length", "len.auto": "Auto", "len.short": "Short (~150)",
+    "len.medium": "Medium (~300)", "len.long": "Long (~480)",
+    "batch.generating": "Generating drafts {d}/{n}…",
   },
 };
 

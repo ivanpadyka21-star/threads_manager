@@ -138,6 +138,7 @@ class Store:
         self._ensure_column("tasks", "target", "TEXT DEFAULT ''")
         self._ensure_column("tasks", "scheduled_for", "TEXT")
         self._ensure_column("tasks", "batch_id", "TEXT DEFAULT ''")
+        self._ensure_column("tasks", "max_chars", "INTEGER")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
 
@@ -239,6 +240,7 @@ class Store:
             "reminder": (fields.get("reminder") or None),
             "scheduled_for": (fields.get("scheduled_for") or None),
             "batch_id": fields.get("batch_id", ""),
+            "max_chars": (int(fields["max_chars"]) if fields.get("max_chars") else None),
             "created_at": _now(),
             "updated_at": _now(),
         }
@@ -246,11 +248,11 @@ class Store:
             cur = self._conn.execute(
                 """INSERT INTO tasks
                    (account_id, kind, title, payload, language, style, target,
-                    status, deadline, reminder, scheduled_for, batch_id,
+                    status, deadline, reminder, scheduled_for, batch_id, max_chars,
                     created_at, updated_at)
                    VALUES (:account_id, :kind, :title, :payload, :language, :style,
                            :target, :status, :deadline, :reminder, :scheduled_for,
-                           :batch_id, :created_at, :updated_at)""",
+                           :batch_id, :max_chars, :created_at, :updated_at)""",
                 cols,
             )
             task_id = cur.lastrowid
@@ -267,6 +269,7 @@ class Store:
         interval_minutes: int = 60,
         start_at: Optional[str] = None,
         kind: str = "post",
+        max_chars: Optional[int] = None,
     ) -> dict:
         """Create up to 10 pending tasks spaced ``interval_minutes`` apart.
 
@@ -291,7 +294,7 @@ class Store:
                 account_id=account_id, kind=kind,
                 title=f"{i + 1}/{len(briefs)}: {brief[:40]}",
                 payload=brief, language=language, style=style,
-                scheduled_for=when, batch_id=batch_id,
+                scheduled_for=when, batch_id=batch_id, max_chars=max_chars,
             ))
         self.log("batch.create", f"{len(briefs)} posts", account_id)
         return {"batch_id": batch_id, "tasks": tasks}

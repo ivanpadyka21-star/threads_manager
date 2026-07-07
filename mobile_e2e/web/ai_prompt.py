@@ -37,6 +37,10 @@ def build_ai_prompt(
         A tuple of the system instruction and the user message.
     """
     account = account or {}
+    # A per-task max_chars overrides the default limit (0/None -> default).
+    task_limit = task.get("max_chars")
+    if task_limit:
+        char_limit = int(task_limit)
     kind = (task.get("kind") or "post").strip()
     action = _KIND_ACTION.get(kind, "the requested content")
 

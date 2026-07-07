@@ -240,6 +240,15 @@ def test_task_structured_fields_stored(store):
     assert got["target"] == "http://x/post/1"
 
 
+def test_task_max_chars_stored(store):
+    acc = store.add_account(name="A")
+    task = store.add_task(account_id=acc["id"], title="x", max_chars=150)
+    assert store.get_task(task["id"])["max_chars"] == 150
+    # empty/absent -> None
+    t2 = store.add_task(account_id=acc["id"], title="y")
+    assert store.get_task(t2["id"])["max_chars"] is None
+
+
 def test_task_result_stored(store):
     acc = store.add_account(name="A")
     task = store.add_task(account_id=acc["id"], title="x")

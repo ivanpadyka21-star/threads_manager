@@ -41,6 +41,12 @@ def test_char_limit_in_prompt():
     assert "480 characters" in system
 
 
+def test_task_max_chars_overrides_limit():
+    system, _ = build_ai_prompt({"kind": "post", "payload": "hi", "max_chars": 150}, char_limit=480)
+    assert "150 characters" in system
+    assert "480 characters" not in system
+
+
 def test_clamp_truncates_long_text():
     from mobile_e2e.web.publish import _clamp
 

@@ -100,12 +100,13 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "accounts") loadAccounts();
   if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
+  if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
   if (name === "audit") loadAudit();
@@ -325,16 +326,29 @@ $("#batch-form").addEventListener("submit", async (e) => {
     briefs, language: fd.get("language"), style: fd.get("style"),
     interval_minutes: Number(fd.get("interval_minutes")) || 60,
     start_at: fd.get("start_at") || null,
+    max_chars: fd.get("max_chars") ? Number(fd.get("max_chars")) : null,
   };
   const btn = e.target.querySelector("button[type=submit]");
-  btn.disabled = true; const label = btn.textContent; btn.textContent = "…";
-  try {
-    const res = await jpost("/api/batches", data);
-    renderBatchPreview(res.batch_id, res.tasks);
-    toast(tf("batch.drafted", { n: res.drafted != null ? res.drafted : res.tasks.length }), "success");
-  } catch (err) { toast(String(err), "error"); }
+  const label = btn.textContent; btn.disabled = true; btn.textContent = "…";
+  const wrap = $("#batch-preview");
+  let res;
+  try { res = await jpost("/api/batches", data); }
+  catch (err) { toast(String(err), "error"); btn.disabled = false; btn.textContent = label; return; }
   btn.disabled = false; btn.textContent = label;
-  loadAiUsage();
+  // Drafts generate in the background — poll for progress.
+  const total = res.tasks.length;
+  wrap.innerHTML = `<div class="hint">${tf("batch.generating", { d: 0, n: total })}</div>`;
+  const poll = setInterval(async () => {
+    let b; try { b = await api("/api/batches/" + res.batch_id); } catch { return; }
+    const drafted = (b.status && b.status.drafted) || 0;
+    if (b.generating) { wrap.innerHTML = `<div class="hint">${tf("batch.generating", { d: drafted, n: total })}</div>`; }
+    else {
+      clearInterval(poll);
+      renderBatchPreview(res.batch_id, b.tasks);
+      toast(tf("batch.drafted", { n: drafted }), "success");
+      loadAiUsage();
+    }
+  }, 1500);
 });
 
 function renderBatchPreview(batchId, tasks) {
@@ -434,6 +448,51 @@ $("#task-form").addEventListener("submit", async (e) => {
   await jpost("/api/tasks", data); e.target.reset(); loadTasks();
 });
 $("#task-filter-status").addEventListener("change", loadTasks);
+
+// --- content calendar (week view) ------------------------------------------
+function startOfWeek(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
+function localKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+let calWeekStart = startOfWeek(new Date());
+async function loadCalendar() {
+  const rows = await api("/api/tasks");
+  const scheduled = rows.filter(tk => tk.scheduled_for);
+  const ctrl = $("#cal-controls"); ctrl.innerHTML = "";
+  const end = new Date(calWeekStart); end.setDate(end.getDate() + 6);
+  const title = el("h2", { text: `${calWeekStart.getDate()} ${calWeekStart.toLocaleDateString(window.I18N.lang, { month: "short" })} — ${end.getDate()} ${end.toLocaleDateString(window.I18N.lang, { month: "short" })}` });
+  const nav = el("div", { class: "cal-nav" },
+    el("button", { class: "mini ghost", text: "‹", onclick: () => { calWeekStart.setDate(calWeekStart.getDate() - 7); loadCalendar(); } }),
+    el("button", { class: "mini ghost", text: t("cal.today"), onclick: () => { calWeekStart = startOfWeek(new Date()); loadCalendar(); } }),
+    el("button", { class: "mini ghost", text: "›", onclick: () => { calWeekStart.setDate(calWeekStart.getDate() + 7); loadCalendar(); } }));
+  ctrl.append(title, nav);
+
+  const grid = el("div", { class: "cal-grid" });
+  const todayKey = localKey(new Date());
+  const dayNames = window.I18N.lang === "en"
+    ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(calWeekStart); day.setDate(day.getDate() + i);
+    const key = localKey(day);
+    const col = el("div", { class: "cal-day" + (key === todayKey ? " today" : "") });
+    col.append(el("div", { class: "cal-date", text: `${dayNames[i]} ${day.getDate()}` }));
+    const items = scheduled.filter(tk => (tk.scheduled_for || "").slice(0, 10) === key)
+      .sort((a, b) => (a.scheduled_for || "").localeCompare(b.scheduled_for || ""));
+    items.forEach(tk => {
+      const it = el("div", { class: "cal-item " + tk.status, onclick: () => showTaskModal(tk) });
+      it.append(el("span", { class: "cal-time", text: (tk.scheduled_for || "").slice(11, 16) }));
+      it.append(el("span", { class: "cal-ttl", text: tk.title || "—" }));
+      col.append(it);
+    });
+    if (!items.length) col.append(el("div", { class: "cal-none", text: "" }));
+    grid.append(col);
+  }
+  $("#calendar").innerHTML = ""; $("#calendar").append(grid);
+}
+function showTaskModal(tk) {
+  const body = el("div", {});
+  body.append(el("div", { class: "tm-meta", text: `${t("col.status")}: ${t("status." + tk.status)} · ${fmtDate(tk.scheduled_for)}` }));
+  body.append(el("pre", { class: "modal-pre", text: tk.result || tk.payload || "—" }));
+  modal({ title: tk.title || "—", body, actions: [{ label: t("btn.close"), value: true }] });
+}
 
 // --- statistics ------------------------------------------------------------
 async function loadStats() {

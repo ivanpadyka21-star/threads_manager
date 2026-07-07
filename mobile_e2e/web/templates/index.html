@@ -21,6 +21,7 @@
         <button class="nav-item active" data-tab="dashboard"><span>▚</span> <em data-i18n="nav.dashboard">Дашборд</em></button>
         <button class="nav-item" data-tab="accounts"><span>◉</span> <em data-i18n="nav.accounts">Аккаунты</em></button>
         <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
+        <button class="nav-item" data-tab="calendar"><span>▦</span> <em data-i18n="nav.calendar">Календарь</em></button>
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
         <button class="nav-item" data-tab="analytics"><span>◈</span> <em data-i18n="nav.analytics">Аналитика</em></button>
@@ -130,6 +131,14 @@
               </select>
             </label>
             <label><span data-i18n="task.style">Характер / стиль</span> <input name="style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно, с юмором"></label>
+            <label><span data-i18n="task.length">Длина</span>
+              <select name="max_chars">
+                <option value="" data-i18n="len.auto">Авто</option>
+                <option value="150" data-i18n="len.short">Короткий (~150)</option>
+                <option value="300" data-i18n="len.medium">Средний (~300)</option>
+                <option value="480" data-i18n="len.long">Длинный (~480)</option>
+              </select>
+            </label>
             <label class="wide"><span data-i18n="task.target">Цель (ссылка/описание поста)</span> <input name="target" data-i18n-ph="task.target.ph" placeholder="ссылка или описание поста, к которому комментарий"></label>
             <label><span data-i18n="task.deadline">Дедлайн</span> <input name="deadline" type="datetime-local"></label>
             <label><span data-i18n="task.reminder">🔔 Напоминание</span> <input name="reminder" type="datetime-local"></label>
@@ -161,6 +170,14 @@
               </select>
             </label>
             <label><span data-i18n="task.style">Характер / стиль</span> <input name="style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно"></label>
+            <label><span data-i18n="task.length">Длина</span>
+              <select name="max_chars">
+                <option value="" data-i18n="len.auto">Авто</option>
+                <option value="150" data-i18n="len.short">Короткий (~150)</option>
+                <option value="300" data-i18n="len.medium">Средний (~300)</option>
+                <option value="480" data-i18n="len.long">Длинный (~480)</option>
+              </select>
+            </label>
             <label class="wide"><span data-i18n="batch.briefs">Темы постов — по одной в строке (до 10)</span>
               <textarea name="briefs" rows="5" data-i18n-ph="batch.briefs.ph" placeholder="Пост про любовь&#10;Совет по продуктивности&#10;Мотивация на утро"></textarea>
             </label>
@@ -184,6 +201,14 @@
             </select>
           </div>
           <div id="tasks-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- Calendar -->
+      <section class="tab" id="tab-calendar">
+        <div class="panel">
+          <div class="panel-head" id="cal-controls"></div>
+          <div id="calendar"></div>
         </div>
       </section>
 
