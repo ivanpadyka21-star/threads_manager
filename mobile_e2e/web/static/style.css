@@ -306,6 +306,18 @@ tbody tr { transition: background .12s; }
 .agent-step .as-res { margin-left: auto; color: var(--ok); font-weight: 700; }
 .agent-answer { margin-top: 8px; font-size: 13px; white-space: pre-wrap; color: var(--text); }
 
+/* --- Structure diagram ---------------------------------------------------- */
+.structure-wrap { background: radial-gradient(120% 100% at 50% 0%, #12121a, #0a0a0e); border: 1px solid var(--border); border-radius: 12px; padding: 14px; overflow-x: auto; }
+.struct-svg { min-width: 720px; display: block; }
+.struct-svg .struct-t { font: 700 13px "Inter", system-ui, sans-serif; }
+.struct-svg .struct-s { font: 11px "JetBrains Mono", monospace; fill: #9a9aa7; }
+.struct-svg .struct-alabel { font: 10px "JetBrains Mono", monospace; fill: #9a9aa7; }
+.struct-node { transition: opacity .15s; }
+.struct-node:hover { opacity: .88; }
+.struct-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; }
+.struct-legend .leg { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.struct-legend .leg-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
 /* --- Content calendar ----------------------------------------------------- */
 .cal-nav { display: flex; gap: 6px; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }

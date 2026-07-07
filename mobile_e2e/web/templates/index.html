@@ -26,6 +26,7 @@
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
         <button class="nav-item" data-tab="analytics"><span>◈</span> <em data-i18n="nav.analytics">Аналитика</em></button>
+        <button class="nav-item" data-tab="structure"><span>❖</span> <em data-i18n="nav.structure">Структура</em></button>
         <button class="nav-item" data-tab="audit"><span>≣</span> <em data-i18n="nav.audit">Журнал</em></button>
         <button class="nav-item" data-tab="settings"><span>⚙</span> <em data-i18n="nav.settings">Настройки</em></button>
       </nav>
@@ -360,6 +361,15 @@
             <button type="button" id="an-run-data" class="ghost" data-i18n="an.data">Собрать данные</button>
           </div>
           <pre id="an-output" class="an-output"></pre>
+        </div>
+      </section>
+
+      <!-- Structure -->
+      <section class="tab" id="tab-structure">
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="struct.title">Архитектура проекта</h2></div>
+          <div id="structure" class="structure-wrap"></div>
+          <div class="struct-legend" id="struct-legend"></div>
         </div>
       </section>
 

@@ -100,7 +100,7 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
@@ -110,6 +110,7 @@ function renderTab(name) {
   if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
+  if (name === "structure") renderStructure();
   if (name === "audit") loadAudit();
   if (name === "settings") loadThreadsStatus();
 }
@@ -449,6 +450,94 @@ $("#task-form").addEventListener("submit", async (e) => {
   await jpost("/api/tasks", data); e.target.reset(); loadTasks();
 });
 $("#task-filter-status").addEventListener("change", loadTasks);
+
+// --- Structure diagram (SVG architecture map) ------------------------------
+const STRUCT_CAT = {
+  ui: "#6f8bff", ai: "#b24bff", agent: "#ff3d7f", data: "#2dd4bf",
+  action: "#ffb020", publish: "#3ddc84", analytics: "#257bff", ext: "#8a8a97",
+};
+function renderStructure() {
+  const L = window.I18N.lang === "en" ? "en" : "ru";
+  const tx = (o) => o[L];
+  // id: [x, y, w, h, cat, {ru,en title}, {ru,en sub}]
+  const N = {
+    user:      [390, 16, 220, 56, "ui",       { ru: "СММ-специалист", en: "SMM specialist" }, { ru: "промты · одобрение", en: "prompts · approval" }],
+    dash:      [390, 106, 220, 56, "ui",       { ru: "Дашборд (Flask + UI)", en: "Dashboard (Flask + UI)" }, { ru: "вкладки · роуты · i18n", en: "tabs · routes · i18n" }],
+    studio:    [232, 200, 216, 60, "ai",       { ru: "Студия / Планировщик", en: "Studio / Planner" }, { ru: "промт → темы → задачи", en: "prompt → topics → tasks" }],
+    agent:     [556, 200, 216, 60, "agent",    { ru: "Автопилот-агент", en: "Autopilot agent" }, { ru: "function-calling", en: "function-calling" }],
+    gemini:    [812, 196, 168, 68, "ext",      { ru: "Gemini API", en: "Gemini API" }, { ru: "flash → lite (свап)", en: "flash → lite (fallback)" }],
+    store:     [352, 300, 300, 60, "data",     { ru: "Хранилище (SQLite)", en: "Store (SQLite)" }, { ru: "аккаунты·задачи·промты·аудит", en: "accounts·tasks·prompts·audit" }],
+    approval:  [392, 398, 220, 56, "action",   { ru: "Одобрение", en: "Approval" }, { ru: "человек в цикле", en: "human-in-the-loop" }],
+    scheduler: [392, 490, 220, 56, "ai",       { ru: "Планировщик (фон)", en: "Scheduler (background)" }, { ru: "Киев · лимиты · догон", en: "Kyiv · limits · catch-up" }],
+    threads:   [392, 582, 220, 56, "publish",  { ru: "Threads API", en: "Threads API" }, { ru: "реальная публикация", en: "real publishing" }],
+    analytics: [708, 396, 252, 60, "analytics",{ ru: "Аналитика 24/7", en: "Analytics 24/7" }, { ru: "эффективность·тренды·календарь", en: "effectiveness·trends·calendar" }],
+    runs:      [36, 490, 232, 56, "ext",       { ru: "Запуски (Appium)", en: "Runs (Appium)" }, { ru: "UI-автоматизация · позже", en: "UI automation · later" }],
+  };
+  const anchor = (id, side) => {
+    const [x, y, w, h] = N[id];
+    if (side === "b") return [x + w / 2, y + h];
+    if (side === "t") return [x + w / 2, y];
+    if (side === "l") return [x, y + h / 2];
+    if (side === "r") return [x + w, y + h / 2];
+    return [x + w / 2, y + h / 2];
+  };
+  const s = svg("svg", { viewBox: "0 0 1000 670", width: "100%", class: "struct-svg" });
+  const defs = svg("defs", {});
+  const mk = (id, color) => { const m = svg("marker", { id, markerWidth: 9, markerHeight: 9, refX: 7, refY: 3, orient: "auto", markerUnits: "strokeWidth" }); m.append(svg("path", { d: "M0,0 L7,3 L0,6 z", fill: color })); return m; };
+  defs.append(mk("ah", "#7a7a88"), mk("ahd", "#b24bff"));
+  const f = svg("filter", { id: "nsh", x: "-20%", y: "-20%", width: "140%", height: "140%" });
+  f.append(svg("feDropShadow", { dx: 0, dy: 3, stdDeviation: 4, "flood-color": "#000", "flood-opacity": "0.5" }));
+  defs.append(f);
+  const g = svg("linearGradient", { id: "ngrad", x1: 0, y1: 0, x2: 0, y2: 1 });
+  g.append(svg("stop", { offset: "0%", "stop-color": "#20202a" }), svg("stop", { offset: "100%", "stop-color": "#141419" }));
+  defs.append(g);
+  s.append(defs);
+
+  const arrow = (from, to, opts = {}) => {
+    const [x1, y1] = anchor(from, opts.fs || "b"), [x2, y2] = anchor(to, opts.ts || "t");
+    const midY = (y1 + y2) / 2;
+    const d = Math.abs(x1 - x2) > 40 && (opts.fs === "b" || !opts.fs)
+      ? `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`
+      : `M${x1},${y1} L${x2},${y2}`;
+    s.append(svg("path", { d, fill: "none", stroke: opts.dash ? "#b24bff" : "#7a7a88", "stroke-width": 1.8, "stroke-dasharray": opts.dash ? "5 4" : "0", "marker-end": opts.dash ? "url(#ahd)" : "url(#ah)", opacity: 0.9 }));
+    if (opts.label) { const lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 4; const txt = svg("text", { x: lx, y: ly, class: "struct-alabel", "text-anchor": "middle" }); txt.textContent = opts.label; s.append(txt); }
+  };
+  // connections
+  arrow("user", "dash");
+  arrow("dash", "studio"); arrow("dash", "agent");
+  arrow("studio", "gemini", { fs: "r", ts: "l", dash: true, label: tx({ ru: "ИИ", en: "AI" }) });
+  arrow("agent", "gemini", { fs: "r", ts: "l", dash: true });
+  arrow("studio", "store", { fs: "b", ts: "t", label: tx({ ru: "задачи", en: "tasks" }) });
+  arrow("agent", "store", { fs: "b", ts: "t" });
+  arrow("store", "approval");
+  arrow("approval", "scheduler");
+  arrow("scheduler", "threads");
+  arrow("store", "analytics", { fs: "r", ts: "l", label: tx({ ru: "читает", en: "reads" }) });
+  arrow("analytics", "gemini", { fs: "t", ts: "b", dash: true });
+
+  // nodes
+  for (const [id, [x, y, w, h, cat, title, sub]] of Object.entries(N)) {
+    const node = svg("g", { class: "struct-node" });
+    const dashed = id === "runs";
+    node.append(svg("rect", { x, y, width: w, height: h, rx: 11, fill: "url(#ngrad)", stroke: STRUCT_CAT[cat], "stroke-width": dashed ? 1.4 : 1.6, "stroke-dasharray": dashed ? "5 4" : "0", filter: "url(#nsh)", opacity: dashed ? 0.75 : 1 }));
+    node.append(svg("rect", { x, y, width: 4, height: h, rx: 2, fill: STRUCT_CAT[cat] }));
+    const tEl = svg("text", { x: x + 16, y: y + 24, class: "struct-t" }); tEl.textContent = tx(title); tEl.setAttribute("fill", STRUCT_CAT[cat]);
+    const sEl = svg("text", { x: x + 16, y: y + 42, class: "struct-s" }); sEl.textContent = tx(sub);
+    node.append(tEl, sEl);
+    s.append(node);
+  }
+  const wrap = $("#structure"); wrap.innerHTML = ""; wrap.append(s);
+
+  // legend
+  const legend = $("#struct-legend"); legend.innerHTML = "";
+  const cats = { ui: { ru: "Интерфейс", en: "UI" }, ai: { ru: "ИИ / планирование", en: "AI / planning" }, agent: { ru: "Агент", en: "Agent" }, data: { ru: "Данные", en: "Data" }, action: { ru: "Человек", en: "Human" }, publish: { ru: "Публикация", en: "Publishing" }, analytics: { ru: "Аналитика", en: "Analytics" }, ext: { ru: "Внешнее", en: "External" } };
+  for (const [c, lbl] of Object.entries(cats)) {
+    const item = el("span", { class: "leg" });
+    const dot = el("span", { class: "leg-dot" }); dot.style.background = STRUCT_CAT[c];
+    item.append(dot, document.createTextNode(tx(lbl)));
+    legend.append(item);
+  }
+}
 
 // --- Studio (AI planner + editable post cards + saved prompts) -------------
 async function loadStudio() {

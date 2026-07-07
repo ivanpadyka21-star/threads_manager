@@ -128,6 +128,8 @@ const TRANSLATIONS = {
     "agent.ph": "напр. сделай 3 полезных поста про тайм-менеджмент и разложи на завтра",
     "agent.run": "Запустить агента", "agent.need": "Введите инструкцию",
     "agent.working": "Агент работает…", "agent.done": "Агент завершил",
+    "nav.structure": "Структура", "struct.title": "Архитектура проекта",
+    "desc.structure": "Карта архитектуры: агенты, данные, публикация и связи.",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -254,6 +256,8 @@ const TRANSLATIONS = {
     "agent.ph": "e.g. make 3 useful posts about time management and schedule them for tomorrow",
     "agent.run": "Run agent", "agent.need": "Enter an instruction",
     "agent.working": "Agent working…", "agent.done": "Agent finished",
+    "nav.structure": "Structure", "struct.title": "Project architecture",
+    "desc.structure": "Architecture map: agents, data, publishing and connections.",
   },
 };
 
