@@ -878,8 +878,37 @@ async function loadAnalytics(full) {
   renderAnalyticsCards(a);
   renderTrend(trend);
   renderAnalyticsAccounts(a.accounts);
+  loadTopPosts();
   if (full) renderPicker(a.accounts);
 }
+function postText(r) {
+  let s = (r.result || r.title || "").replace(/^\[published [^\]]*\]\s*/, "");
+  return s.length > 80 ? s.slice(0, 80) + "…" : s;
+}
+async function loadTopPosts() {
+  const wrap = $("#top-posts"); if (!wrap) return;
+  const by = ($("#top-by") && $("#top-by").value) || "views";
+  const rows = await api("/api/analytics/top-posts?by=" + by + "&limit=10");
+  if (!rows.length) { wrap.innerHTML = ""; wrap.append(emptyState(t("top.empty"), t("top.empty.hint"), "📈")); return; }
+  const table = el("table");
+  table.append(headRow(["col.post", "col.views", "col.likes", "col.replies"]));
+  const tbody = el("tbody");
+  rows.forEach(r => tbody.append(el("tr", {},
+    el("td", { class: "top-text", title: (r.result || "").replace(/^\[published [^\]]*\]\s*/, ""), text: postText(r) }),
+    td(String(r.views)), td(String(r.likes)), td(String(r.replies)))));
+  table.append(tbody); wrap.innerHTML = ""; wrap.append(table);
+}
+const topBy = $("#top-by"); if (topBy) topBy.addEventListener("change", loadTopPosts);
+const topRefresh = $("#top-refresh");
+if (topRefresh) topRefresh.addEventListener("click", async () => {
+  topRefresh.disabled = true; const lbl = topRefresh.textContent; topRefresh.textContent = "…";
+  try {
+    const r = await jpost("/api/threads/refresh-insights");
+    toast(tf("top.updated", { n: r.updated }), "success");
+    loadTopPosts();
+  } catch (err) { toast(String(err), "error", 6000); }
+  topRefresh.disabled = false; topRefresh.textContent = lbl;
+});
 function renderTrend(points) {
   const wrap = $("#analytics-trend"); wrap.innerHTML = "";
   const withData = points.filter(p => p.score != null);

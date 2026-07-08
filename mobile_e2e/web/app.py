@@ -308,8 +308,10 @@ def create_app(
             "You are a social-media content planner. From the user's request, "
             "produce a plan of individual post briefs — short, concrete topics, "
             "one per intended post. Infer how many posts they want (default 5, "
-            "max 10). Respond with ONLY a JSON array of short brief strings "
-            "(no numbering, no extra text)."
+            "max 10). VARY the angle and format across the plan (short & punchy, "
+            "reflective/heartfelt, a question, something educational) — don't "
+            "repeat one formula. Respond with ONLY a JSON array of short brief "
+            "strings (no numbering, no extra text)."
         )
         try:
             raw = AIAgent(system_prompt).generate_response(prompt)
@@ -321,6 +323,34 @@ def create_app(
         return jsonify({"briefs": briefs, "raw": raw})
 
     # -- Threads integration ------------------------------------------------
+    @app.post("/api/threads/refresh-insights")
+    def refresh_insights():
+        """Fetch views/likes/replies for published posts from the Threads API."""
+        updated, errors = 0, 0
+        for task in db.published_tasks(limit=100):
+            account = db.get_account(task["account_id"]) if task["account_id"] else None
+            creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+            try:
+                m = threads_client.fetch_insights(task["published_id"], creds)
+                db.set_task_metrics(task["id"], m["views"], m["likes"], m["replies"])
+                updated += 1
+            except threads_client.ThreadsNotConfigured as exc:
+                return jsonify({"error": str(exc), "configured": False}), 409
+            except Exception:  # noqa: BLE001 - skip a single post that fails
+                errors += 1
+        return jsonify({"updated": updated, "errors": errors})
+
+    @app.get("/api/analytics/top-posts")
+    def top_posts():
+        by = request.args.get("by", "views")
+        limit = request.args.get("limit", default=10, type=int)
+        rows = db.top_posts(by=by, limit=limit)
+        return jsonify([{
+            "id": r["id"], "title": r["title"], "result": r["result"],
+            "views": r["views"], "likes": r["likes"], "replies": r["replies"],
+            "when": r["updated_at"],
+        } for r in rows])
+
     @app.get("/api/threads/status")
     def threads_status():
         account_id = request.args.get("account_id", type=int)

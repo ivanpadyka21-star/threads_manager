@@ -86,6 +86,46 @@ async def _publish_async(text: str, credentials_file: str) -> str:
         return str(published_id)
 
 
+def _parse_insights(raw: dict) -> dict:
+    """Flatten the Threads insights response into {views, likes, replies, ...}."""
+    out = {"views": 0, "likes": 0, "replies": 0, "reposts": 0, "quotes": 0}
+    for item in (raw or {}).get("data", []):
+        name = item.get("name")
+        if name not in out:
+            continue
+        value = None
+        values = item.get("values")
+        if values:
+            value = values[0].get("value")
+        elif isinstance(item.get("total_value"), dict):
+            value = item["total_value"].get("value")
+        if value is not None:
+            out[name] = int(value)
+    return out
+
+
+async def _insights_async(media_id: str, credentials_file: str) -> dict:
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        return await api.insights(media_id)
+
+
+def fetch_insights(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> dict:
+    """Fetch a published post's metrics (views/likes/replies/…).
+
+    Requires the ``threads_manage_insights`` permission on the token.
+
+    Raises:
+        ThreadsNotConfigured: If setup is incomplete.
+    """
+    _ensure_ready(credentials_file)
+    return _parse_insights(asyncio.run(_insights_async(media_id, credentials_file)))
+
+
 def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
     """Publish a text thread via the official API.
 

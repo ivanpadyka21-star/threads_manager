@@ -131,7 +131,11 @@ const TRANSLATIONS = {
     "nav.structure": "Структура", "struct.title": "Архитектура проекта",
     "desc.structure": "Карта архитектуры: агенты, данные, публикация и связи.",
     "acc.persona": "Персона (кто вы — ИИ пишет от вашего лица)",
-    "acc.persona.ph": "напр. СММ-сексолог, пишу от первого лица, дерзко и игриво, аудитория 18+, люблю тизеры и вопросы к мужчинам, которые заводят диалог в комментариях",
+    "acc.persona.ph": "напр. СММ-сексолог, пишу от первого лица, дерзко и игриво, аудитория 18+, посты разные: коротко/с душой, вопросы к разной аудитории",
+    "top.title": "Топ постов (просмотры / лайки)", "top.refresh": "Обновить метрики",
+    "top.updated": "Обновлено постов: {n}", "top.empty": "Пока нет опубликованных постов с метриками",
+    "top.empty.hint": "Опубликуйте посты и нажмите «Обновить метрики»",
+    "col.post": "Пост", "col.views": "Просмотры", "col.likes": "Лайки", "col.replies": "Ответы",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -261,7 +265,11 @@ const TRANSLATIONS = {
     "nav.structure": "Structure", "struct.title": "Project architecture",
     "desc.structure": "Architecture map: agents, data, publishing and connections.",
     "acc.persona": "Persona (who you are — the AI writes as you)",
-    "acc.persona.ph": "e.g. SMM sexologist, first-person, bold & playful, 18+ audience, love teasers and questions to men that spark discussion in the comments",
+    "acc.persona.ph": "e.g. SMM sexologist, first-person, bold & playful, 18+ audience, varied posts: short/heartfelt, questions to different audiences",
+    "top.title": "Top posts (views / likes)", "top.refresh": "Refresh metrics",
+    "top.updated": "Posts updated: {n}", "top.empty": "No published posts with metrics yet",
+    "top.empty.hint": "Publish posts and click Refresh metrics",
+    "col.post": "Post", "col.views": "Views", "col.likes": "Likes", "col.replies": "Replies",
   },
 };
 

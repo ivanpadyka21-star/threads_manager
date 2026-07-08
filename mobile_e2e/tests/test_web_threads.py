@@ -77,3 +77,40 @@ def test_account_credentials_file_stored(client):
     c, store = client
     acc = store.add_account(name="T", credentials_file="creds/acc1.json")
     assert store.get_account(acc["id"])["credentials_file"] == "creds/acc1.json"
+
+
+def test_parse_insights():
+    raw = {"data": [
+        {"name": "views", "values": [{"value": 1200}]},
+        {"name": "likes", "values": [{"value": 34}]},
+        {"name": "replies", "values": [{"value": 7}]},
+        {"name": "reposts", "total_value": {"value": 2}},
+    ]}
+    m = threads_client._parse_insights(raw)
+    assert m["views"] == 1200 and m["likes"] == 34 and m["replies"] == 7
+    assert m["reposts"] == 2
+
+
+def test_top_posts_route(client):
+    c, store = client
+    acc = store.add_account(name="A")
+    t = store.add_task(account_id=acc["id"], title="hi", payload="hello")
+    store.set_task_published(t["id"], "999")
+    store.set_task_metrics(t["id"], views=500, likes=40, replies=6)
+    res = c.get("/api/analytics/top-posts?by=views")
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body[0]["views"] == 500 and body[0]["likes"] == 40
+
+
+def test_refresh_insights_route(client):
+    from unittest.mock import patch
+    c, store = client
+    acc = store.add_account(name="A")
+    t = store.add_task(account_id=acc["id"], title="hi")
+    store.set_task_published(t["id"], "999")
+    with patch("mobile_e2e.web.threads_client.fetch_insights",
+               return_value={"views": 300, "likes": 25, "replies": 3, "reposts": 0, "quotes": 0}):
+        res = c.post("/api/threads/refresh-insights")
+    assert res.status_code == 200 and res.get_json()["updated"] == 1
+    assert store.get_task(t["id"])["views"] == 300

@@ -145,6 +145,10 @@ class Store:
         self._ensure_column("tasks", "scheduled_for", "TEXT")
         self._ensure_column("tasks", "batch_id", "TEXT DEFAULT ''")
         self._ensure_column("tasks", "max_chars", "INTEGER")
+        self._ensure_column("tasks", "published_id", "TEXT DEFAULT ''")
+        self._ensure_column("tasks", "views", "INTEGER DEFAULT 0")
+        self._ensure_column("tasks", "likes", "INTEGER DEFAULT 0")
+        self._ensure_column("tasks", "replies", "INTEGER DEFAULT 0")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "persona", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
@@ -492,6 +496,39 @@ class Store:
                 "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?",
                 (status, _now(), task_id),
             )
+
+    def set_task_published(self, task_id: int, published_id: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE tasks SET published_id = ?, updated_at = ? WHERE id = ?",
+                (str(published_id), _now(), task_id),
+            )
+
+    def set_task_metrics(self, task_id: int, views: int, likes: int, replies: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE tasks SET views = ?, likes = ?, replies = ? WHERE id = ?",
+                (int(views), int(likes), int(replies), task_id),
+            )
+
+    def published_tasks(self, limit: int = 100) -> List[dict]:
+        """Done tasks that have a Threads media id (for refreshing insights)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE published_id != '' AND published_id IS NOT NULL "
+                "ORDER BY updated_at DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def top_posts(self, by: str = "views", limit: int = 10) -> List[dict]:
+        """Published posts ranked by a metric (views/likes/replies)."""
+        col = by if by in ("views", "likes", "replies") else "views"
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM tasks WHERE published_id != '' AND published_id IS NOT NULL "
+                f"ORDER BY {col} DESC, updated_at DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def set_task_result(self, task_id: int, result: str) -> None:
         with self._lock, self._conn:

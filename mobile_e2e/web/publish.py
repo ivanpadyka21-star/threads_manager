@@ -63,5 +63,6 @@ def publish_task(db, task_id: int) -> str:
 
     db.record_event("run.ok", f"threads published {published_id}", account_id, level="ok")
     db.set_task_result(task_id, f"[published {published_id}] {text}")
+    db.set_task_published(task_id, published_id)
     db.set_task_status(task_id, "done")
     return published_id

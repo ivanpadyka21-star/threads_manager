@@ -273,6 +273,21 @@ def test_task_structured_fields_stored(store):
     assert got["target"] == "http://x/post/1"
 
 
+def test_task_metrics_and_top_posts(store):
+    acc = store.add_account(name="A")
+    t1 = store.add_task(account_id=acc["id"], title="p1")
+    t2 = store.add_task(account_id=acc["id"], title="p2")
+    store.set_task_published(t1["id"], "111")
+    store.set_task_published(t2["id"], "222")
+    store.set_task_metrics(t1["id"], views=50, likes=5, replies=1)
+    store.set_task_metrics(t2["id"], views=200, likes=20, replies=4)
+    assert len(store.published_tasks()) == 2
+    top = store.top_posts(by="views", limit=10)
+    assert [t["id"] for t in top[:2]] == [t2["id"], t1["id"]]
+    top_likes = store.top_posts(by="likes", limit=1)
+    assert top_likes[0]["id"] == t2["id"]
+
+
 def test_task_max_chars_stored(store):
     acc = store.add_account(name="A")
     task = store.add_task(account_id=acc["id"], title="x", max_chars=150)

@@ -355,6 +355,20 @@
           <div id="analytics-accounts" class="table-wrap"></div>
         </div>
         <div class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="top.title">Топ постов (просмотры / лайки)</h2>
+            <div class="filters">
+              <select id="top-by">
+                <option value="views" data-i18n="col.views">Просмотры</option>
+                <option value="likes" data-i18n="col.likes">Лайки</option>
+                <option value="replies" data-i18n="col.replies">Ответы</option>
+              </select>
+              <button id="top-refresh" class="mini ghost" data-i18n="top.refresh">Обновить метрики</button>
+            </div>
+          </div>
+          <div id="top-posts" class="table-wrap"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2 data-i18n="an.ai">ИИ-аналитик</h2></div>
           <div class="hint" data-i18n="an.pick" style="margin-bottom:8px">Выберите аккаунты (пусто = все)</div>
           <div id="an-picker" class="picker"></div>
