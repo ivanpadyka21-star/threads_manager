@@ -1093,9 +1093,16 @@ async function runAnalyticsAI(useAI) {
 $("#an-run-ai").addEventListener("click", () => runAnalyticsAI(true));
 $("#an-run-data").addEventListener("click", () => runAnalyticsAI(false));
 
-// Real-time refresh while on the Analytics tab.
+// True while the user is actively editing a field — background refreshes must
+// never re-render underneath a focused input (that is what wiped typed text).
+function isTyping() {
+  const a = document.activeElement;
+  return a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable);
+}
+// Real-time refresh while on the Analytics tab (paused whenever you are typing).
 setInterval(() => {
-  if (currentTab === "analytics" && $("#analytics-auto") && $("#analytics-auto").checked) loadAnalytics(false);
+  if (currentTab === "analytics" && $("#analytics-auto") && $("#analytics-auto").checked && !isTyping())
+    loadAnalytics(false);
 }, 4000);
 
 // --- runs (workflow) -------------------------------------------------------
