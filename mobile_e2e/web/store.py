@@ -14,6 +14,7 @@ Design guardrails baked in:
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import threading
 import uuid
@@ -510,6 +511,26 @@ class Store:
                 "UPDATE tasks SET views = ?, likes = ?, replies = ? WHERE id = ?",
                 (int(views), int(likes), int(replies), task_id),
             )
+
+    def backfill_published_ids(self) -> int:
+        """Populate published_id from the '[published <id>] ...' result prefix.
+
+        Covers posts published before the dedicated column existed. Returns the
+        number of tasks backfilled.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, result FROM tasks WHERE status = 'done' "
+                "AND (published_id IS NULL OR published_id = '') "
+                "AND result LIKE '[published %'"
+            ).fetchall()
+        n = 0
+        for r in rows:
+            m = re.match(r"\[published (\S+)\]", r["result"] or "")
+            if m:
+                self.set_task_published(r["id"], m.group(1))
+                n += 1
+        return n
 
     def published_tasks(self, limit: int = 100) -> List[dict]:
         """Done tasks that have a Threads media id (for refreshing insights)."""

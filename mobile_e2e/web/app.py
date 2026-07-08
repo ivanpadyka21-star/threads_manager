@@ -326,6 +326,7 @@ def create_app(
     @app.post("/api/threads/refresh-insights")
     def refresh_insights():
         """Fetch views/likes/replies for published posts from the Threads API."""
+        db.backfill_published_ids()  # cover posts published before the id column
         updated, errors = 0, 0
         for task in db.published_tasks(limit=100):
             account = db.get_account(task["account_id"]) if task["account_id"] else None

@@ -273,6 +273,15 @@ def test_task_structured_fields_stored(store):
     assert got["target"] == "http://x/post/1"
 
 
+def test_backfill_published_ids(store):
+    acc = store.add_account(name="A")
+    t = store.add_task(account_id=acc["id"], title="x")
+    store.set_task_result(t["id"], "[published 12345] hello world")
+    store.set_task_status(t["id"], "done")
+    assert store.backfill_published_ids() == 1
+    assert store.get_task(t["id"])["published_id"] == "12345"
+
+
 def test_task_metrics_and_top_posts(store):
     acc = store.add_account(name="A")
     t1 = store.add_task(account_id=acc["id"], title="p1")

@@ -107,11 +107,19 @@ def _parse_insights(raw: dict) -> dict:
 async def _insights_async(media_id: str, credentials_file: str) -> dict:
     from pythreads.api import API
     from pythreads.credentials import Credentials
+    from pythreads.threads import Threads
 
     with open(credentials_file, "r", encoding="utf-8") as f:
         credentials = Credentials.from_json(f.read())
     async with API(credentials=credentials) as api:
-        return await api.insights(media_id)
+        # The Threads media-insights endpoint requires a `metric=` parameter
+        # (pythreads' own insights() sends `fields=`, which the API rejects).
+        url = Threads.build_graph_api_url(
+            f"{media_id}/insights",
+            {"metric": "views,likes,replies,reposts,quotes"},
+            api._access_token(),
+        )
+        return await api._get(url)
 
 
 def fetch_insights(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> dict:
@@ -121,9 +129,13 @@ def fetch_insights(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FI
 
     Raises:
         ThreadsNotConfigured: If setup is incomplete.
+        RuntimeError: If the Threads API returns an error.
     """
     _ensure_ready(credentials_file)
-    return _parse_insights(asyncio.run(_insights_async(media_id, credentials_file)))
+    raw = asyncio.run(_insights_async(media_id, credentials_file))
+    if isinstance(raw, dict) and raw.get("error"):
+        raise RuntimeError(str(raw["error"].get("message", raw["error"])))
+    return _parse_insights(raw)
 
 
 def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
