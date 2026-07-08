@@ -55,6 +55,12 @@ def test_dispatch_get_content_insights(store):
     assert "summary" in out
 
 
+def test_dispatch_get_viral_formats(store):
+    r = AgentRunner(store, client=MagicMock(), model="m")
+    out = r._dispatch("get_viral_formats", {})
+    assert out["formats"] and any(f["id"] == "chain_question_men" for f in out["formats"])
+
+
 def test_dispatch_unknown_tool(store):
     r = AgentRunner(store, client=MagicMock(), model="m")
     assert "error" in r._dispatch("nope", {})

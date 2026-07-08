@@ -21,7 +21,7 @@ from flask import Flask, jsonify, render_template, request
 from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
-from mobile_e2e.web import threads_client
+from mobile_e2e.web import archetypes, threads_client
 from mobile_e2e.web.agent import AgentRunner
 from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
@@ -272,6 +272,18 @@ def create_app(
     def delete_prompt(prompt_id: int):
         db.delete_prompt(prompt_id)
         return jsonify({"deleted": prompt_id})
+
+    @app.get("/api/viral-formats")
+    def viral_formats():
+        lang = request.args.get("lang", "ru")
+        return jsonify(archetypes.list_archetypes(lang))
+
+    @app.post("/api/prompts/seed-viral")
+    def seed_viral_prompts():
+        lang = (request.get_json(silent=True) or {}).get("lang", "ru")
+        created = archetypes.seed_prompts(db, lang)
+        db.log("prompts.seed_viral", f"{created} viral templates")
+        return jsonify({"created": created, "prompts": db.list_prompts()})
 
     # -- autonomous agent (Gemini function-calling) -------------------------
     # In-memory conversation sessions so the agent has back-and-forth memory.

@@ -619,6 +619,16 @@ $("#studio-save-prompt").addEventListener("click", async () => {
   await jpost("/api/prompts", { name: nameEl.value.trim(), text });
   toast(t("studio.saved_ok"), "success"); loadStudioPrompts();
 });
+const seedViral = $("#seed-viral");
+if (seedViral) seedViral.addEventListener("click", async () => {
+  seedViral.disabled = true;
+  try {
+    const r = await jpost("/api/prompts/seed-viral", { lang: (window.I18N && window.I18N.lang) || "ru" });
+    toast(tf("studio.seeded", { n: r.created }), "success");
+    loadStudioPrompts();
+  } catch (err) { toast(String(err), "error", 6000); }
+  seedViral.disabled = false;
+});
 async function createStudioTasks() {
   const briefs = $$("#studio-cards .pc-text").map(t => t.value.trim()).filter(Boolean).slice(0, 10);
   if (!briefs.length) { toast(t("studio.need_briefs"), "warn"); return; }

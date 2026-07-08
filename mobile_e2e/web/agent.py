@@ -17,6 +17,7 @@ from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.ai.settings import get_ai_settings
 from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web.ai_prompt import build_ai_prompt
+from mobile_e2e.web import archetypes
 
 LOG = get_logger(__name__)
 
@@ -26,16 +27,22 @@ SYSTEM_PROMPT = (
     "about WHY posts landed (the psychology — vulnerability, intimacy, a "
     "personal confession, a direct question people feel compelled to answer), "
     "and then steer the writer model toward more of what works.\n"
-    "HIERARCHY & METHOD: (1) call get_content_insights FIRST to see the "
-    "top-performing posts and the measured patterns (best length, whether a "
-    "direct question helps, whether greeting helps). (2) Form a short thesis: "
-    "what theme/tone/format the audience rewards right now. (3) Plan a VARIED "
-    "set — lean into the winning direction (personal, intimacy/closeness, a "
-    "little playful spice) but vary it: some short and punchy, some deep and "
-    "heartfelt; some a direct question to men, some to women, some to both; "
-    "avoid a greeting on every post if the data says it doesn't help. (4) "
-    "create_tasks with clear, specific briefs, then generate_drafts so the "
-    "writer produces the text — the insights are passed to it automatically.\n"
+    "THE GROWTH ENGINE on Threads is the REPLY CHAIN (Ланцюжок): a post that "
+    "makes strangers answer or argue in the comments gets amplified far more "
+    "than a polished monologue — comments matter more than likes, and views "
+    "follow comments. So bias the plan toward posts engineered to pull a reply.\n"
+    "HIERARCHY & METHOD: (1) call get_content_insights to see YOUR own top posts "
+    "and measured patterns, and get_viral_formats to see the proven archetypes "
+    "(confession question to men, dilemma to women, debate bait, participatory "
+    "'everyone drop a…', value-shock sexual-health tip, emoji meme, longing/"
+    "intimacy). (2) Form a short thesis: which archetypes + theme to ride now. "
+    "(3) Plan a VARIED set that mixes archetypes and audiences — some sharp "
+    "one-line questions to men, some dilemmas to women, some participatory, some "
+    "of your proven medium-length intimacy confessions; avoid a greeting on "
+    "every post if the data says it doesn't help. Put the chosen format and the "
+    "exact angle into each brief. (4) create_tasks with those clear briefs, then "
+    "generate_drafts so the writer produces the text — insights are passed to it "
+    "automatically.\n"
     "You NEVER publish; the human approves everything before it goes live. "
     "Write in the account's own stated persona (first person) for its opted-in "
     "audience; playful, suggestive, teasing content is fine when that is the "
@@ -67,6 +74,17 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "account_id": {"type": "integer", "description": "Optional: focus on one account."}
         }},
+    }},
+    {"type": "function", "function": {
+        "name": "get_viral_formats",
+        "description": (
+            "Get the library of PROVEN viral post archetypes for this niche "
+            "(reply-chain questions to men/women, debate bait, participatory "
+            "prompts, value-shock sexual-health tips, emoji memes, longing/"
+            "intimacy) with the mechanic behind each and example skeletons. Use "
+            "these to plan a varied, comment-driving set."
+        ),
+        "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
         "name": "create_tasks",
@@ -138,6 +156,9 @@ class AgentRunner:
             eff = self._store.effectiveness(hours=hours)
             return {"effectiveness": eff["score"], "problems": eff["problems"],
                     "ai": self._store.ai_stats(hours=hours)}
+        if name == "get_viral_formats":
+            return {"formats": archetypes.list_archetypes(),
+                    "note": "Reply chains drive reach — comments matter more than likes."}
         if name == "get_content_insights":
             account_id = args.get("account_id") or self._default_account_id
             ins = self._store.content_insights(
