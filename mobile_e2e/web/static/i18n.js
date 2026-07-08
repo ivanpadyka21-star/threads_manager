@@ -164,6 +164,7 @@ const TRANSLATIONS = {
     "cyc.st.planned": "Спланировано", "cyc.st.drafted": "Черновики готовы", "cyc.st.failed": "Ошибка",
     "cyc.goalv": "Цель: просмотры", "cyc.goalc": "Цель: комменты",
     "cyc.g.views": "Просмотры (30 дн)", "cyc.g.comments": "Комментарии (30 дн)",
+    "cyc.niche": "Ниша (ключевые слова для разведки ленты)", "cyc.niche.ph": "стосунки, секс, зрада, побачення",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -326,6 +327,7 @@ const TRANSLATIONS = {
     "cyc.st.planned": "Planned", "cyc.st.drafted": "Drafts ready", "cyc.st.failed": "Failed",
     "cyc.goalv": "Goal: views", "cyc.goalc": "Goal: comments",
     "cyc.g.views": "Views (30d)", "cyc.g.comments": "Comments (30d)",
+    "cyc.niche": "Niche (keywords for feed recon)", "cyc.niche.ph": "relationships, sex, cheating, dating",
   },
 };
 

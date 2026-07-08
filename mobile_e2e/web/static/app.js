@@ -977,6 +977,7 @@ async function loadCycle(full) {
       $("#cyc-interval").value = cfg.interval_minutes; $("#cyc-lang").value = cfg.language || "Ukrainian";
       if ($("#cyc-goalv")) $("#cyc-goalv").value = cfg.goal_views;
       if ($("#cyc-goalc")) $("#cyc-goalc").value = cfg.goal_comments;
+      if ($("#cyc-niche")) $("#cyc-niche").value = cfg.niche || "";
     }
     renderGoalBar(cfg);
     const sel = $("#cyc-account");
@@ -1040,6 +1041,7 @@ if (cycSave) cycSave.addEventListener("click", async () => {
     count: Number($("#cyc-count").value), interval_minutes: Number($("#cyc-interval").value),
     language: $("#cyc-lang").value.trim(), account_id: $("#cyc-account").value || "",
     goal_views: Number($("#cyc-goalv").value), goal_comments: Number($("#cyc-goalc").value),
+    niche: $("#cyc-niche").value.trim(),
   });
   renderGoalBar(cfg);
   toast(t("cyc.saved"), "success");

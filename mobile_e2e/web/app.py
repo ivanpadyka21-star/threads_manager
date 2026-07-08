@@ -30,7 +30,7 @@ from mobile_e2e.web.scheduler import PostScheduler
 from mobile_e2e.web.strategy import (
     StrategyCycle, StrategyScheduler, get_strategy_settings,
     S_ENABLED, S_HOUR, S_COUNT, S_LANGUAGE, S_ACCOUNT, S_INTERVAL,
-    S_GOAL_VIEWS, S_GOAL_COMMENTS,
+    S_GOAL_VIEWS, S_GOAL_COMMENTS, S_NICHE,
 )
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
@@ -370,6 +370,8 @@ def create_app(
         for key, name in ((S_GOAL_VIEWS, "goal_views"), (S_GOAL_COMMENTS, "goal_comments")):
             if name in data and data.get(name) not in (None, ""):
                 db.set_setting(key, str(int(data[name])))
+        if "niche" in data:
+            db.set_setting(S_NICHE, str(data.get("niche") or ""))
         return jsonify(get_strategy_settings(db))
 
     @app.get("/api/strategy/runs")

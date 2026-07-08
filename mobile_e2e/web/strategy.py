@@ -149,11 +149,27 @@ class StrategyCycle:
         data["posts"] = unique[:count]
         return data
 
+    # -- learning loop: refresh real data before planning -------------------
+    def refresh_intel(self) -> dict:
+        """Pull the freshest data so each cycle LEARNS: update our own post
+        metrics (what actually landed) and top up niche/feed trends by our
+        keywords. Both best-effort — never blocks planning if unavailable."""
+        metrics = refresh_metrics(self._store)
+        niche = self._store.get_setting(S_NICHE, DEFAULTS[S_NICHE]) or ""
+        keywords = [k.strip() for k in niche.split(",") if k.strip()]
+        added = refresh_niche_feed(self._store, keywords) if keywords else 0
+        return {"metrics_updated": metrics, "feed_added": added}
+
     # -- full cycle ---------------------------------------------------------
     def run(self, *, count: int = 6, language: str = "Ukrainian",
             interval_minutes: int = 90, trigger: str = "manual",
-            draft: bool = True) -> dict:
+            draft: bool = True, refresh: bool = True) -> dict:
         """Execute the full cycle and persist a strategy_run report."""
+        if refresh:
+            try:
+                self.refresh_intel()
+            except Exception as exc:  # noqa: BLE001 - learning is best-effort
+                LOG.warning("intel refresh skipped: %s", exc)
         try:
             plan = self.plan(count, language)
         except Exception as exc:  # noqa: BLE001 - record the failure, don't crash
@@ -213,10 +229,65 @@ S_INTERVAL = "strategy_interval"
 S_LAST_DATE = "strategy_last_date"
 S_GOAL_VIEWS = "strategy_goal_views"
 S_GOAL_COMMENTS = "strategy_goal_comments"
+S_NICHE = "strategy_niche"
 
 DEFAULTS = {S_ENABLED: "0", S_HOUR: "9", S_COUNT: "6",
             S_LANGUAGE: "Ukrainian", S_ACCOUNT: "", S_INTERVAL: "90",
-            S_GOAL_VIEWS: "20000", S_GOAL_COMMENTS: "300"}
+            S_GOAL_VIEWS: "20000", S_GOAL_COMMENTS: "300",
+            S_NICHE: "стосунки, секс, зрада, побачення, пристрасть, близькість"}
+
+
+def refresh_metrics(store, limit: int = 80) -> int:
+    """Fetch fresh views/likes/replies for published posts (per-account creds).
+
+    Best-effort: stops quietly if Threads isn't configured, skips posts that
+    error. Returns the number of posts updated. This is what makes our OWN
+    performance data current so the next plan learns from reality.
+    """
+    from mobile_e2e.web import threads_client
+    try:
+        store.backfill_published_ids()
+    except Exception:  # noqa: BLE001
+        pass
+    updated = 0
+    for task in store.published_tasks(limit=limit):
+        account = store.get_account(task["account_id"]) if task.get("account_id") else None
+        creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+        try:
+            m = threads_client.fetch_insights(task["published_id"], creds)
+            store.set_task_metrics(task["id"], m["views"], m["likes"], m["replies"])
+            updated += 1
+        except threads_client.ThreadsNotConfigured:
+            break  # not set up at all — no point continuing
+        except Exception:  # noqa: BLE001 - skip a single failing post
+            continue
+    return updated
+
+
+def refresh_niche_feed(store, keywords, per_keyword: int = 10) -> int:
+    """Pull fresh public niche posts by our keywords into feed_samples.
+
+    Best-effort: needs the Threads keyword_search permission; if unavailable it
+    silently returns 0 and we keep using the manually-added competitor samples.
+    Keeps trend intelligence current and strictly on our topic.
+    """
+    from mobile_e2e.web import feed_source
+    added = 0
+    for kw in keywords:
+        try:
+            posts = feed_source.search(kw, limit=per_keyword)
+        except Exception:  # noqa: BLE001 - unavailable/not configured → skip
+            continue
+        for p in posts:
+            try:
+                if store.add_feed_sample(
+                    p["text"], author=p.get("author", ""), likes=p.get("likes", 0),
+                    replies=p.get("replies", 0), url=p.get("url", ""),
+                    topic=kw, source="keyword_search"):
+                    added += 1
+            except Exception:  # noqa: BLE001
+                continue
+    return added
 
 
 def get_strategy_settings(store) -> dict:
@@ -229,6 +300,7 @@ def get_strategy_settings(store) -> dict:
         "interval_minutes": int(store.get_setting(S_INTERVAL, DEFAULTS[S_INTERVAL]) or 90),
         "goal_views": int(store.get_setting(S_GOAL_VIEWS, DEFAULTS[S_GOAL_VIEWS]) or 0),
         "goal_comments": int(store.get_setting(S_GOAL_COMMENTS, DEFAULTS[S_GOAL_COMMENTS]) or 0),
+        "niche": store.get_setting(S_NICHE, DEFAULTS[S_NICHE]),
         "last_date": store.get_setting(S_LAST_DATE, ""),
     }
 

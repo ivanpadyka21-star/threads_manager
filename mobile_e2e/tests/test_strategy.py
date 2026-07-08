@@ -145,6 +145,36 @@ def test_goal_is_injected_into_context(store):
     assert "GOAL" in ctx
 
 
+def test_refresh_niche_feed_pulls_and_stores(store, monkeypatch):
+    from mobile_e2e.web import feed_source
+    from mobile_e2e.web import strategy as st
+
+    def fake_search(kw, limit=10, **kw2):
+        return [{"text": f"trending about {kw}", "author": "x", "likes": 3,
+                 "replies": 9, "views": 0, "url": ""}]
+
+    monkeypatch.setattr(feed_source, "search", fake_search)
+    added = st.refresh_niche_feed(store, ["зрада", "секс"])
+    assert added == 2
+    assert len(store.list_feed_samples()) == 2
+
+
+def test_refresh_metrics_noop_when_threads_unconfigured(store):
+    # No creds/env in tests → refresh must be a safe no-op, not raise.
+    from mobile_e2e.web import strategy as st
+    acc = store.add_account(name="A")
+    t = store.add_task(account_id=acc["id"], title="x")
+    store.set_task_published(t["id"], "123")
+    assert st.refresh_metrics(store) == 0
+
+
+def test_cycle_run_still_works_with_refresh(store):
+    # refresh_intel is best-effort and must not break a normal run.
+    acc = store.add_account(name="A", persona="p")
+    run = StrategyCycle(store, account_id=acc["id"], agent_factory=_factory).run(trigger="manual")
+    assert run["status"] == "drafted" and run["tasks_created"] == 2
+
+
 def test_goal_progress_sums_published_metrics(store):
     acc = store.add_account(name="A")
     t = store.add_task(account_id=acc["id"], title="x")
