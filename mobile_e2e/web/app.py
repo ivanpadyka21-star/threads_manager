@@ -27,6 +27,10 @@ from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
 from mobile_e2e.web.publish import publish_task
 from mobile_e2e.web.scheduler import PostScheduler
+from mobile_e2e.web.strategy import (
+    StrategyCycle, StrategyScheduler, get_strategy_settings,
+    S_ENABLED, S_HOUR, S_COUNT, S_LANGUAGE, S_ACCOUNT, S_INTERVAL,
+)
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
 
@@ -343,6 +347,59 @@ def create_app(
         return jsonify({"available": True, "found": len(found), "stored_new": stored,
                         "samples": db.list_feed_samples()})
 
+    # -- daily strategy cycle -----------------------------------------------
+    @app.get("/api/strategy/settings")
+    def strategy_settings():
+        return jsonify(get_strategy_settings(db))
+
+    @app.post("/api/strategy/settings")
+    def save_strategy_settings():
+        data = request.get_json(silent=True) or {}
+        if "enabled" in data:
+            db.set_setting(S_ENABLED, "1" if data.get("enabled") else "0")
+        for key, name in ((S_HOUR, "hour"), (S_COUNT, "count"), (S_INTERVAL, "interval_minutes")):
+            if name in data and data.get(name) not in (None, ""):
+                db.set_setting(key, str(int(data[name])))
+        if "language" in data:
+            db.set_setting(S_LANGUAGE, str(data.get("language") or "Ukrainian"))
+        if "account_id" in data:
+            db.set_setting(S_ACCOUNT, str(data.get("account_id") or ""))
+        return jsonify(get_strategy_settings(db))
+
+    @app.get("/api/strategy/runs")
+    def strategy_runs():
+        return jsonify(db.list_strategy_runs())
+
+    @app.get("/api/strategy/runs/<int:run_id>")
+    def strategy_run(run_id: int):
+        run = db.get_strategy_run(run_id)
+        if not run:
+            return jsonify({"error": "not found"}), 404
+        return jsonify(run)
+
+    @app.post("/api/strategy/run")
+    def strategy_run_now():
+        data = request.get_json(silent=True) or {}
+        cfg = get_strategy_settings(db)
+        account_id = data.get("account_id", cfg["account_id"])
+        account_id = int(account_id) if account_id else None
+        count = int(data.get("count") or cfg["count"])
+        language = str(data.get("language") or cfg["language"])
+        interval = int(data.get("interval_minutes") or cfg["interval_minutes"])
+
+        def _work():
+            try:
+                StrategyCycle(db, account_id=account_id).run(
+                    count=count, language=language, interval_minutes=interval, trigger="manual")
+            except Exception as exc:  # noqa: BLE001 - record and move on
+                db.add_strategy_run(account_id=account_id, trigger="manual",
+                                    status="failed", error=str(exc)[:300])
+
+        # The cycle makes several LLM calls; run it off the request thread and
+        # let the UI poll /api/strategy/runs for the new report.
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
     # -- autonomous agent (Gemini function-calling) -------------------------
     # In-memory conversation sessions so the agent has back-and-forth memory.
     agent_sessions: dict = {}
@@ -601,6 +658,7 @@ def main() -> None:
     # every post twice. WERKZEUG_RUN_MAIN is set only in the worker child.
     if os.getenv("E2E_WEB_DEBUG", "0") != "1" or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         PostScheduler(store, interval_seconds=30).start()
+        StrategyScheduler(store, interval_seconds=300).start()
     host = os.getenv("E2E_WEB_HOST", "127.0.0.1")
     port = int(os.getenv("E2E_WEB_PORT", "5000"))
     # Set E2E_WEB_DEBUG=1 for the "workshop" mode: the reloader restarts the

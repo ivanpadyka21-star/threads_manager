@@ -960,8 +960,92 @@ async function loadAnalytics(full) {
   loadTopPosts();
   loadContentInsights();
   loadFeedSamples();
+  loadCycle(full);
   if (full) renderPicker(a.accounts);
 }
+
+// -- daily strategy cycle ---------------------------------------------------
+let cycleLoaded = false;
+async function loadCycle(full) {
+  if (!$("#cyc-runs")) return;
+  // Only (re)fill the controls on a full load so typing isn't overwritten.
+  if (full || !cycleLoaded) {
+    const cfg = await api("/api/strategy/settings");
+    if (!isTyping()) {
+      $("#cyc-enabled").checked = !!cfg.enabled;
+      $("#cyc-hour").value = cfg.hour; $("#cyc-count").value = cfg.count;
+      $("#cyc-interval").value = cfg.interval_minutes; $("#cyc-lang").value = cfg.language || "Ukrainian";
+    }
+    const sel = $("#cyc-account");
+    if (sel && !sel.children.length) {
+      const accs = await api("/api/accounts");
+      sel.innerHTML = `<option value="">${t("cyc.all_accounts")}</option>` +
+        accs.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
+      sel.value = cfg.account_id || "";
+    }
+    cycleLoaded = true;
+  }
+  renderCycleRuns(await api("/api/strategy/runs"));
+}
+function renderCycleRuns(runs) {
+  const wrap = $("#cyc-runs"); if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!runs.length) { wrap.append(emptyState(t("cyc.empty"), t("cyc.empty.hint"), "🕒")); return; }
+  runs.slice(0, 8).forEach(r => {
+    const card = el("div", { class: "cyc-run " + r.status });
+    const head = el("div", { class: "cyc-run-head" },
+      el("span", { class: "cyc-badge " + r.status, text: t("cyc.st." + r.status) || r.status }),
+      el("span", { class: "cyc-when", text: (r.trigger === "daily" ? "⏰ " : "▶ ") + (r.created_at || "").replace("T", " ") }),
+      el("span", { class: "cyc-count-badge", text: tf("cyc.made", { n: r.tasks_created }) }));
+    card.append(head);
+    if (r.thesis) card.append(el("div", { class: "cyc-thesis", text: r.thesis }));
+    if (r.analysis) card.append(el("div", { class: "cyc-analysis", text: r.analysis }));
+    if (r.error) card.append(el("div", { class: "cyc-error", text: "⚠ " + r.error }));
+    // Planned posts (archetype · audience · theme)
+    let plan = null; try { plan = JSON.parse(r.plan_json || "null"); } catch (e) {}
+    if (plan && plan.posts && plan.posts.length) {
+      const ol = el("ol", { class: "cyc-posts" });
+      plan.posts.forEach(p => ol.append(el("li", {},
+        el("span", { class: "cyc-tag", text: [p.archetype, p.audience, p.theme].filter(Boolean).join(" · ") }),
+        el("span", { class: "cyc-brief", text: p.brief || "" }))));
+      card.append(ol);
+    }
+    wrap.append(card);
+  });
+}
+const cycSave = $("#cyc-save");
+if (cycSave) cycSave.addEventListener("click", async () => {
+  await jpost("/api/strategy/settings", {
+    enabled: $("#cyc-enabled").checked, hour: Number($("#cyc-hour").value),
+    count: Number($("#cyc-count").value), interval_minutes: Number($("#cyc-interval").value),
+    language: $("#cyc-lang").value.trim(), account_id: $("#cyc-account").value || "",
+  });
+  toast(t("cyc.saved"), "success");
+});
+const cycRun = $("#cyc-run");
+if (cycRun) cycRun.addEventListener("click", async () => {
+  cycRun.disabled = true; const lbl = cycRun.textContent; cycRun.textContent = t("cyc.running");
+  try {
+    await jpost("/api/strategy/run", {
+      count: Number($("#cyc-count").value) || undefined,
+      language: $("#cyc-lang").value.trim() || undefined,
+      interval_minutes: Number($("#cyc-interval").value) || undefined,
+      account_id: $("#cyc-account").value || "",
+    });
+    toast(t("cyc.started"), "success");
+    // Poll for the fresh run (LLM plan + drafts take a bit).
+    let tries = 0;
+    const before = (await api("/api/strategy/runs")).length;
+    const poll = setInterval(async () => {
+      const runs = await api("/api/strategy/runs");
+      renderCycleRuns(runs);
+      if (runs.length > before || ++tries > 40) {
+        clearInterval(poll); cycRun.disabled = false; cycRun.textContent = lbl;
+        if (runs.length > before) { toast(t("cyc.done"), "success"); loadTasks(); }
+      }
+    }, 3000);
+  } catch (err) { toast(String(err), "error", 6000); cycRun.disabled = false; cycRun.textContent = lbl; }
+});
 function postText(r) {
   let s = (r.result || r.title || "").replace(/^\[published [^\]]*\]\s*/, "");
   return s.length > 80 ? s.slice(0, 80) + "…" : s;

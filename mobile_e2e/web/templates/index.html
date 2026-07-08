@@ -347,6 +347,23 @@
           <label class="auto"><input type="checkbox" id="analytics-auto" checked> <span data-i18n="an.auto">Реальное время</span></label>
         </div>
         <div class="cards" id="analytics-cards"></div>
+        <div class="panel cycle-panel">
+          <div class="panel-head">
+            <h2 data-i18n="cyc.title">🕒 Суточный стратег-цикл</h2>
+            <button id="cyc-run" class="mini" data-i18n="cyc.run">Запустить цикл сейчас</button>
+          </div>
+          <div class="hint" data-i18n="cyc.hint" style="margin-bottom:10px">Один прогон: разведка ниши → анализ залётов → агент пишет план и черновики (на одобрение) → без повторов. Раз в день автоматически.</div>
+          <div class="cyc-controls">
+            <label class="auto"><input type="checkbox" id="cyc-enabled"> <span data-i18n="cyc.enabled">Авто раз в день</span></label>
+            <label><span data-i18n="cyc.hour">Час (Киев)</span><input type="number" id="cyc-hour" min="0" max="23" style="width:70px"></label>
+            <label><span data-i18n="cyc.count">Постов</span><input type="number" id="cyc-count" min="1" max="10" style="width:70px"></label>
+            <label><span data-i18n="cyc.interval">Интервал, мин</span><input type="number" id="cyc-interval" min="10" step="10" style="width:90px"></label>
+            <label><span data-i18n="cyc.lang">Язык</span><input id="cyc-lang" style="width:130px"></label>
+            <label><span data-i18n="cyc.account">Аккаунт</span><select id="cyc-account"></select></label>
+            <button id="cyc-save" class="mini ghost" data-i18n="cyc.save">Сохранить</button>
+          </div>
+          <div id="cyc-runs" class="cyc-runs"></div>
+        </div>
         <div class="panel">
           <div class="panel-head"><h2 data-i18n="an.trend">Тренд эффективности (30 дн)</h2></div>
           <div id="analytics-trend"></div>

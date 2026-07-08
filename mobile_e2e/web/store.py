@@ -147,6 +147,23 @@ class Store:
                     url TEXT DEFAULT '',
                     captured_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS strategy_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    account_id INTEGER,
+                    status TEXT DEFAULT 'planned',
+                    trigger TEXT DEFAULT 'manual',
+                    thesis TEXT DEFAULT '',
+                    analysis TEXT DEFAULT '',
+                    plan_json TEXT DEFAULT '',
+                    tasks_created INTEGER DEFAULT 0,
+                    batch_id TEXT DEFAULT '',
+                    error TEXT DEFAULT ''
+                );
+                CREATE TABLE IF NOT EXISTS meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
                 """
             )
         # Migrate older databases that predate newer columns.
@@ -162,6 +179,8 @@ class Store:
         self._ensure_column("tasks", "views", "INTEGER DEFAULT 0")
         self._ensure_column("tasks", "likes", "INTEGER DEFAULT 0")
         self._ensure_column("tasks", "replies", "INTEGER DEFAULT 0")
+        self._ensure_column("tasks", "archetype", "TEXT DEFAULT ''")
+        self._ensure_column("tasks", "theme", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "persona", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
@@ -267,6 +286,8 @@ class Store:
             "scheduled_for": (fields.get("scheduled_for") or None),
             "batch_id": fields.get("batch_id", ""),
             "max_chars": (int(fields["max_chars"]) if fields.get("max_chars") else None),
+            "archetype": fields.get("archetype", "").strip(),
+            "theme": fields.get("theme", "").strip(),
             "created_at": _now(),
             "updated_at": _now(),
         }
@@ -275,10 +296,11 @@ class Store:
                 """INSERT INTO tasks
                    (account_id, kind, title, payload, language, style, target,
                     status, deadline, reminder, scheduled_for, batch_id, max_chars,
-                    created_at, updated_at)
+                    archetype, theme, created_at, updated_at)
                    VALUES (:account_id, :kind, :title, :payload, :language, :style,
                            :target, :status, :deadline, :reminder, :scheduled_for,
-                           :batch_id, :max_chars, :created_at, :updated_at)""",
+                           :batch_id, :max_chars, :archetype, :theme,
+                           :created_at, :updated_at)""",
                 cols,
             )
             task_id = cur.lastrowid
@@ -323,6 +345,48 @@ class Store:
                 scheduled_for=when, batch_id=batch_id, max_chars=max_chars,
             ))
         self.log("batch.create", f"{len(briefs)} posts", account_id)
+        return {"batch_id": batch_id, "tasks": tasks}
+
+    def add_strategy_batch(
+        self,
+        account_id: Optional[int],
+        posts: List[dict],
+        language: str = "",
+        interval_minutes: int = 90,
+        start_at: Optional[str] = None,
+        max_chars: Optional[int] = None,
+    ) -> dict:
+        """Create up to 10 pending, archetype-tagged posts for a strategy cycle.
+
+        ``posts`` is a list of dicts: ``{brief, archetype, theme, audience,
+        language}``. Tags let anti-repetition and analytics track variety.
+        Returns ``{batch_id, tasks}``.
+        """
+        posts = [p for p in posts if isinstance(p, dict) and str(p.get("brief", "")).strip()][:10]
+        if not posts:
+            raise ValueError("Provide at least one planned post.")
+        interval = max(1, int(interval_minutes))
+        base = (
+            datetime.fromisoformat(start_at)
+            if start_at
+            else datetime.now(_TZ).replace(tzinfo=None)
+        )
+        batch_id = uuid.uuid4().hex
+        tasks = []
+        for i, p in enumerate(posts):
+            brief = str(p.get("brief", "")).strip()
+            when = (base + timedelta(minutes=interval * i)).isoformat(timespec="minutes")
+            style = " · ".join(x for x in (str(p.get("archetype", "")).strip(),
+                                           str(p.get("audience", "")).strip()) if x)
+            tasks.append(self.add_task(
+                account_id=account_id, kind="post",
+                title=f"{i + 1}/{len(posts)}: {brief[:40]}",
+                payload=brief, language=str(p.get("language") or language).strip(),
+                style=style, archetype=str(p.get("archetype", "")).strip(),
+                theme=str(p.get("theme", "")).strip(),
+                scheduled_for=when, batch_id=batch_id, max_chars=max_chars,
+            ))
+        self.log("strategy.batch", f"{len(posts)} tagged posts", account_id)
         return {"batch_id": batch_id, "tasks": tasks}
 
     def list_batch(self, batch_id: str) -> List[dict]:
@@ -782,6 +846,82 @@ class Store:
             who = f"@{s['author']} " if s["author"] else ""
             lines.append(f"  {i}. {s['views']}v/{s['likes']}l/{s['replies']}r {who}— «{s['text']}»")
         return "\n".join(lines)
+
+    # -- daily strategy cycle -----------------------------------------------
+    def recent_angles(self, days: int = 7, account_id: Optional[int] = None) -> List[dict]:
+        """Recently used (archetype, theme) pairs — so the planner avoids repeats."""
+        cutoff = _cutoff(days * 24)
+        sql = ("SELECT archetype, theme FROM tasks WHERE created_at >= ? "
+               "AND (archetype != '' OR theme != '')")
+        params: list = [cutoff]
+        if account_id:
+            sql += " AND account_id = ?"
+            params.append(account_id)
+        sql += " ORDER BY created_at DESC LIMIT 60"
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [{"archetype": r["archetype"] or "", "theme": r["theme"] or ""} for r in rows]
+
+    def add_strategy_run(self, *, account_id: Optional[int] = None, trigger: str = "manual",
+                         thesis: str = "", analysis: str = "", plan_json: str = "",
+                         tasks_created: int = 0, batch_id: str = "", status: str = "planned",
+                         error: str = "") -> dict:
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                """INSERT INTO strategy_runs
+                   (created_at, account_id, status, trigger, thesis, analysis,
+                    plan_json, tasks_created, batch_id, error)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (_now(), account_id, status, trigger, thesis, analysis,
+                 plan_json, int(tasks_created), batch_id, error),
+            )
+            run_id = cur.lastrowid
+        self.log("strategy.run", f"{trigger}: {tasks_created} posts, {status}", account_id)
+        return self.get_strategy_run(run_id)
+
+    def update_strategy_run(self, run_id: int, **fields) -> Optional[dict]:
+        allowed = {"status", "thesis", "analysis", "plan_json", "tasks_created", "batch_id", "error"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if updates:
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            with self._lock, self._conn:
+                self._conn.execute(
+                    f"UPDATE strategy_runs SET {sets} WHERE id = ?",
+                    (*updates.values(), run_id),
+                )
+        return self.get_strategy_run(run_id)
+
+    def get_strategy_run(self, run_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM strategy_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_strategy_runs(self, limit: int = 30) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM strategy_runs ORDER BY created_at DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def last_strategy_run(self) -> Optional[dict]:
+        runs = self.list_strategy_runs(limit=1)
+        return runs[0] if runs else None
+
+    # -- settings (key/value meta) ------------------------------------------
+    def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        with self._lock:
+            row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, str(value)),
+            )
 
     def set_task_result(self, task_id: int, result: str) -> None:
         with self._lock, self._conn:
