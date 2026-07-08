@@ -113,11 +113,17 @@ def main() -> None:
     print(">>> Exchanging the code for a long-lived token...")
     credentials = Threads.complete_authorization(callback_url, state, config=config)
 
-    output = os.getenv("THREADS_CREDENTIALS_FILE", DEFAULT_OUTPUT)
+    # Output file: CLI arg wins (for a second account), else env, else default.
+    # e.g. `python -m mobile_e2e.web.threads_connect threads_credentials_2.json`
+    output = (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-")
+              else os.getenv("THREADS_CREDENTIALS_FILE", DEFAULT_OUTPUT))
     with open(output, "w", encoding="utf-8") as f:
         f.write(credentials.to_json())
     print(f"\n[OK] Credentials saved to {output}")
-    print("     The dashboard Settings tab should now show 'Connected'.")
+    if output == DEFAULT_OUTPUT:
+        print("     The dashboard Settings tab should now show 'Connected'.")
+    else:
+        print(f"     Now create a dashboard account whose credentials_file = {output}")
 
 
 if __name__ == "__main__":
