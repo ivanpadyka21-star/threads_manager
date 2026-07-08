@@ -456,23 +456,29 @@ const STRUCT_CAT = {
   ui: "#6f8bff", ai: "#b24bff", agent: "#ff3d7f", data: "#2dd4bf",
   action: "#ffb020", publish: "#3ddc84", analytics: "#257bff", ext: "#8a8a97",
 };
+function hexShade(hex, f) { // f<1 darken, f>1 lighten
+  const n = parseInt(hex.slice(1), 16);
+  const cl = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = cl(((n >> 16) & 255) * f), g = cl(((n >> 8) & 255) * f), b = cl((n & 255) * f);
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
 function renderStructure() {
   const L = window.I18N.lang === "en" ? "en" : "ru";
   const tx = (o) => o[L];
-  // id: [x, y, w, h, cat, {ru,en title}, {ru,en sub}]
+  // id: [x, y, w, h, cat, icon, {ru,en title}, {ru,en sub}]
   const N = {
-    user:      [180, 16, 220, 56, "ui",       { ru: "СММ-специалист", en: "SMM specialist" }, { ru: "промты · одобрение", en: "prompts · approval" }],
-    claude:    [556, 16, 244, 56, "agent",    { ru: "Claude (оркестратор)", en: "Claude (orchestrator)" }, { ru: "через API · направляет агента", en: "via API · directs the agent" }],
-    dash:      [300, 106, 220, 56, "ui",       { ru: "Дашборд (Flask + UI)", en: "Dashboard (Flask + UI)" }, { ru: "вкладки · роуты · i18n", en: "tabs · routes · i18n" }],
-    studio:    [232, 200, 216, 60, "ai",       { ru: "Студия / Планировщик", en: "Studio / Planner" }, { ru: "промт → темы → задачи", en: "prompt → topics → tasks" }],
-    agent:     [556, 200, 216, 60, "agent",    { ru: "Агент-стратег", en: "Strategist agent" }, { ru: "учится на метриках → промты", en: "learns from metrics → prompts" }],
-    gemini:    [812, 196, 168, 68, "ext",      { ru: "Gemini API", en: "Gemini API" }, { ru: "flash → lite (свап)", en: "flash → lite (fallback)" }],
-    store:     [352, 300, 300, 60, "data",     { ru: "Хранилище (SQLite)", en: "Store (SQLite)" }, { ru: "аккаунты·задачи·промты·аудит", en: "accounts·tasks·prompts·audit" }],
-    approval:  [392, 398, 220, 56, "action",   { ru: "Одобрение", en: "Approval" }, { ru: "человек в цикле", en: "human-in-the-loop" }],
-    scheduler: [392, 490, 220, 56, "ai",       { ru: "Планировщик (фон)", en: "Scheduler (background)" }, { ru: "Киев · лимиты · догон", en: "Kyiv · limits · catch-up" }],
-    threads:   [392, 582, 220, 56, "publish",  { ru: "Threads API", en: "Threads API" }, { ru: "реальная публикация", en: "real publishing" }],
-    analytics: [708, 396, 252, 60, "analytics",{ ru: "Аналитика 24/7", en: "Analytics 24/7" }, { ru: "эффективность·тренды·календарь", en: "effectiveness·trends·calendar" }],
-    runs:      [36, 490, 232, 56, "ext",       { ru: "Запуски (Appium)", en: "Runs (Appium)" }, { ru: "UI-автоматизация · позже", en: "UI automation · later" }],
+    user:      [388,  22, 224, 66, "ui",       "🧑‍💼", { ru: "СММ-специалист", en: "SMM specialist" }, { ru: "промты · одобрение", en: "prompts · approval" }],
+    claude:    [372, 150, 256, 66, "agent",    "🧠", { ru: "Claude · оркестратор", en: "Claude · orchestrator" }, { ru: "через API · направляет агента", en: "via API · directs the agent" }],
+    agent:     [352, 280, 296, 96, "agent",    "🤖", { ru: "Агент-стратег", en: "Strategist agent" }, { ru: "учится на метриках → промты", en: "learns from metrics → prompts" }],
+    gemini:    [388, 452, 224, 68, "ext",      "✍️", { ru: "Gemini · writer", en: "Gemini · writer" }, { ru: "flash → lite (свап)", en: "flash → lite (fallback)" }],
+    dash:      [56, 150, 236, 62, "ui",        "🖥️", { ru: "Дашборд (Flask + UI)", en: "Dashboard (Flask + UI)" }, { ru: "вкладки · роуты · i18n", en: "tabs · routes · i18n" }],
+    studio:    [52, 288, 244, 66, "ai",        "✨", { ru: "Студия / Планировщик", en: "Studio / Planner" }, { ru: "промт → темы → задачи", en: "prompt → topics → tasks" }],
+    analytics: [712, 284, 252, 68, "analytics","📊", { ru: "Аналитика 24/7", en: "Analytics 24/7" }, { ru: "метрики·тренды·разведка", en: "metrics·trends·feed intel" }],
+    store:     [352, 566, 296, 62, "data",     "🗄️", { ru: "Хранилище (SQLite)", en: "Store (SQLite)" }, { ru: "аккаунты·задачи·метрики", en: "accounts·tasks·metrics" }],
+    approval:  [104, 566, 210, 60, "action",   "✅", { ru: "Одобрение", en: "Approval" }, { ru: "человек в цикле", en: "human-in-the-loop" }],
+    scheduler: [700, 566, 224, 60, "ai",       "⏱️", { ru: "Планировщик (фон)", en: "Scheduler (bg)" }, { ru: "Киев · лимиты · догон", en: "Kyiv · limits · catch-up" }],
+    threads:   [352, 660, 296, 60, "publish",  "🧵", { ru: "Threads API", en: "Threads API" }, { ru: "реальная публикация", en: "real publishing" }],
+    runs:      [716, 452, 232, 60, "ext",      "📱", { ru: "Запуски (Appium)", en: "Runs (Appium)" }, { ru: "UI-автоматизация · позже", en: "UI automation · later" }],
   };
   const anchor = (id, side) => {
     const [x, y, w, h] = N[id];
@@ -482,53 +488,114 @@ function renderStructure() {
     if (side === "r") return [x + w, y + h / 2];
     return [x + w / 2, y + h / 2];
   };
-  const s = svg("svg", { viewBox: "0 0 1000 670", width: "100%", class: "struct-svg" });
+  const s = svg("svg", { viewBox: "0 0 1000 760", width: "100%", class: "struct-svg" });
   const defs = svg("defs", {});
-  const mk = (id, color) => { const m = svg("marker", { id, markerWidth: 9, markerHeight: 9, refX: 7, refY: 3, orient: "auto", markerUnits: "strokeWidth" }); m.append(svg("path", { d: "M0,0 L7,3 L0,6 z", fill: color })); return m; };
-  defs.append(mk("ah", "#7a7a88"), mk("ahd", "#b24bff"));
-  const f = svg("filter", { id: "nsh", x: "-20%", y: "-20%", width: "140%", height: "140%" });
-  f.append(svg("feDropShadow", { dx: 0, dy: 3, stdDeviation: 4, "flood-color": "#000", "flood-opacity": "0.5" }));
-  defs.append(f);
-  const g = svg("linearGradient", { id: "ngrad", x1: 0, y1: 0, x2: 0, y2: 1 });
-  g.append(svg("stop", { offset: "0%", "stop-color": "#20202a" }), svg("stop", { offset: "100%", "stop-color": "#141419" }));
-  defs.append(g);
+  // arrowheads
+  const mk = (id, color) => { const m = svg("marker", { id, markerWidth: 8, markerHeight: 8, refX: 6, refY: 3, orient: "auto", markerUnits: "strokeWidth" }); m.append(svg("path", { d: "M0,0 L6,3 L0,6 z", fill: color })); return m; };
+  defs.append(mk("ah", "#5b5b6b"), mk("ahd", "#b14bff"), mk("ahc", "#ff2e7e"));
+  // face gradient (dark glass slab)
+  const fg = svg("linearGradient", { id: "faceGrad", x1: 0, y1: 0, x2: 0, y2: 1 });
+  fg.append(svg("stop", { offset: "0%", "stop-color": "#24242e" }), svg("stop", { offset: "100%", "stop-color": "#14141b" }));
+  defs.append(fg);
+  // main-chain connector gradient (pink→violet→teal)
+  const cg = svg("linearGradient", { id: "chainGrad", x1: 0, y1: 0, x2: 0, y2: 1 });
+  cg.append(svg("stop", { offset: "0%", "stop-color": "#ff2e7e" }), svg("stop", { offset: "55%", "stop-color": "#b14bff" }), svg("stop", { offset: "100%", "stop-color": "#22d3c5" }));
+  defs.append(cg);
+  // glow filters
+  const glow = svg("filter", { id: "glow", x: "-60%", y: "-60%", width: "220%", height: "220%" });
+  glow.append(svg("feGaussianBlur", { stdDeviation: 5, result: "b" }));
+  const gm = svg("feMerge", {}); gm.append(svg("feMergeNode", { in: "b" }), svg("feMergeNode", { in: "SourceGraphic" })); glow.append(gm);
+  defs.append(glow);
+  const sh = svg("filter", { id: "slabsh", x: "-40%", y: "-40%", width: "180%", height: "200%" });
+  sh.append(svg("feDropShadow", { dx: 0, dy: 10, stdDeviation: 12, "flood-color": "#000", "flood-opacity": "0.55" }));
+  defs.append(sh);
   s.append(defs);
 
-  const arrow = (from, to, opts = {}) => {
+  // -- connectors (drawn first, under nodes) --------------------------------
+  const link = (from, to, opts = {}) => {
     const [x1, y1] = anchor(from, opts.fs || "b"), [x2, y2] = anchor(to, opts.ts || "t");
-    const midY = (y1 + y2) / 2;
-    const d = Math.abs(x1 - x2) > 40 && (opts.fs === "b" || !opts.fs)
+    const midY = (y1 + y2) / 2, curve = Math.abs(x1 - x2) > 30;
+    const d = curve && (opts.fs === "b" || opts.ts === "t" || !opts.fs)
       ? `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`
       : `M${x1},${y1} L${x2},${y2}`;
-    s.append(svg("path", { d, fill: "none", stroke: opts.dash ? "#b24bff" : "#7a7a88", "stroke-width": 1.8, "stroke-dasharray": opts.dash ? "5 4" : "0", "marker-end": opts.dash ? "url(#ahd)" : "url(#ah)", opacity: 0.9 }));
-    if (opts.label) { const lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 4; const txt = svg("text", { x: lx, y: ly, class: "struct-alabel", "text-anchor": "middle" }); txt.textContent = opts.label; s.append(txt); }
+    const main = opts.main, dash = opts.dash;
+    const stroke = main ? "url(#chainGrad)" : (dash ? "#8a5bd0" : "#4a4a58");
+    // base line
+    s.append(svg("path", { d, fill: "none", stroke, "stroke-width": main ? 4.5 : 2, "stroke-linecap": "round",
+      "stroke-dasharray": dash && !main ? "5 5" : "0", opacity: main ? 0.95 : 0.75,
+      "marker-end": main ? "url(#ahc)" : (dash ? "url(#ahd)" : "url(#ah)"), filter: main ? "url(#glow)" : "" }));
+    // animated flowing dots along the path
+    if (main || opts.flow) {
+      const flow = svg("path", { d, fill: "none", stroke: main ? "#fff" : "#c9a6ff", "stroke-width": main ? 2.4 : 1.6,
+        "stroke-linecap": "round", "stroke-dasharray": "1 16", opacity: main ? 0.9 : 0.6 });
+      const an = svg("animate", { attributeName: "stroke-dashoffset", from: "34", to: "0", dur: main ? "1.1s" : "1.6s", repeatCount: "indefinite" });
+      flow.append(an); s.append(flow);
+    }
+    if (opts.label) {
+      const lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 5;
+      const g = svg("g", {});
+      const tw = tx(opts.label).length * 6.2 + 12;
+      g.append(svg("rect", { x: lx - tw / 2, y: ly - 12, width: tw, height: 17, rx: 8, fill: "#0c0c12", stroke: "rgba(255,255,255,.1)", "stroke-width": 1 }));
+      const txt = svg("text", { x: lx, y: ly, class: "struct-alabel", "text-anchor": "middle" }); txt.textContent = tx(opts.label);
+      g.append(txt); s.append(g);
+    }
   };
-  // connections
-  arrow("user", "dash");
-  arrow("user", "claude", { fs: "r", ts: "l", dash: true, label: tx({ ru: "чат", en: "chat" }) });
-  arrow("claude", "agent", { dash: true, label: tx({ ru: "API", en: "API" }) });
-  arrow("dash", "studio"); arrow("dash", "agent");
-  arrow("studio", "gemini", { fs: "r", ts: "l", dash: true, label: tx({ ru: "ИИ", en: "AI" }) });
-  arrow("agent", "gemini", { fs: "r", ts: "l", dash: true });
-  arrow("studio", "store", { fs: "b", ts: "t", label: tx({ ru: "задачи", en: "tasks" }) });
-  arrow("agent", "store", { fs: "b", ts: "t" });
-  arrow("store", "approval");
-  arrow("approval", "scheduler");
-  arrow("scheduler", "threads");
-  arrow("store", "analytics", { fs: "r", ts: "l", label: tx({ ru: "читает", en: "reads" }) });
-  arrow("analytics", "gemini", { fs: "t", ts: "b", dash: true });
-  // Quality feedback loop: real metrics steer the strategist (and thus the writer).
-  arrow("analytics", "agent", { fs: "t", ts: "b", dash: true, label: tx({ ru: "что работает", en: "what works" }) });
+  // main hierarchy chain (the spotlight): You → Claude → Agent → Gemini
+  link("user", "claude", { main: true, label: { ru: "чат", en: "chat" } });
+  link("claude", "agent", { main: true, label: { ru: "направляет", en: "directs" } });
+  link("agent", "gemini", { main: true, label: { ru: "промты", en: "prompts" } });
+  // supporting pipeline
+  link("user", "dash", { fs: "l", ts: "t" });
+  link("dash", "studio");
+  link("studio", "gemini", { fs: "b", ts: "l", dash: true, label: { ru: "ИИ", en: "AI" } });
+  link("studio", "store", { fs: "b", ts: "l", label: { ru: "задачи", en: "tasks" } });
+  link("agent", "store", { fs: "b", ts: "t" });
+  link("store", "approval", { fs: "l", ts: "t", label: { ru: "одобрить", en: "approve" } });
+  link("store", "scheduler", { fs: "r", ts: "t" });
+  link("scheduler", "threads", { fs: "b", ts: "r" });
+  link("approval", "threads", { fs: "b", ts: "l" });
+  link("store", "analytics", { fs: "r", ts: "b" });
+  link("analytics", "agent", { fs: "l", ts: "r", dash: true, flow: true, label: { ru: "что работает", en: "what works" } });
 
-  // nodes
-  for (const [id, [x, y, w, h, cat, title, sub]] of Object.entries(N)) {
-    const node = svg("g", { class: "struct-node" });
-    const dashed = id === "runs";
-    node.append(svg("rect", { x, y, width: w, height: h, rx: 11, fill: "url(#ngrad)", stroke: STRUCT_CAT[cat], "stroke-width": dashed ? 1.4 : 1.6, "stroke-dasharray": dashed ? "5 4" : "0", filter: "url(#nsh)", opacity: dashed ? 0.75 : 1 }));
-    node.append(svg("rect", { x, y, width: 4, height: h, rx: 2, fill: STRUCT_CAT[cat] }));
-    const tEl = svg("text", { x: x + 16, y: y + 24, class: "struct-t" }); tEl.textContent = tx(title); tEl.setAttribute("fill", STRUCT_CAT[cat]);
-    const sEl = svg("text", { x: x + 16, y: y + 42, class: "struct-s" }); sEl.textContent = tx(sub);
+  // -- 3D slab nodes --------------------------------------------------------
+  for (const [id, [x, y, w, h, cat, icon, title, sub]] of Object.entries(N)) {
+    const color = STRUCT_CAT[cat], hero = id === "agent", dashed = id === "runs";
+    const node = svg("g", { class: "struct-node" + (hero ? " hero" : "") });
+    const rx = 16;
+    // ground shadow
+    node.append(svg("ellipse", { cx: x + w / 2, cy: y + h + 10, rx: w * 0.42, ry: 7, fill: "#000", opacity: 0.35, filter: "url(#glow)" }));
+    // extruded depth: two stacked darker slabs behind the face
+    node.append(svg("rect", { x: x + 6, y: y + 9, width: w, height: h, rx, fill: hexShade(color, 0.35), opacity: 0.85 }));
+    node.append(svg("rect", { x: x + 3, y: y + 4.5, width: w, height: h, rx, fill: hexShade(color, 0.55), opacity: 0.9 }));
+    // face
+    node.append(svg("rect", { x, y, width: w, height: h, rx, fill: "url(#faceGrad)",
+      stroke: color, "stroke-width": hero ? 2 : 1.4, "stroke-dasharray": dashed ? "6 5" : "0",
+      opacity: dashed ? 0.8 : 1, filter: "url(#slabsh)" }));
+    // top sheen highlight
+    node.append(svg("rect", { x: x + 1, y: y + 1, width: w - 2, height: h * 0.42, rx: rx - 2, fill: "#fff", opacity: 0.05 }));
+    // coloured accent bar (left)
+    node.append(svg("rect", { x, y: y + 8, width: 4, height: h - 16, rx: 2, fill: color, filter: hero ? "url(#glow)" : "" }));
+    // hero pulsing ring around the agent avatar
+    const iconCx = x + 30, iconCy = y + h / 2;
+    if (hero) {
+      const ring = svg("circle", { cx: iconCx, cy: iconCy, r: 21, fill: "none", stroke: color, "stroke-width": 2, opacity: 0.6 });
+      ring.append(svg("animate", { attributeName: "r", values: "20;26;20", dur: "2.6s", repeatCount: "indefinite" }));
+      ring.append(svg("animate", { attributeName: "opacity", values: "0.6;0;0.6", dur: "2.6s", repeatCount: "indefinite" }));
+      node.append(ring);
+    }
+    // icon avatar disc
+    node.append(svg("circle", { cx: iconCx, cy: iconCy, r: hero ? 19 : 15, fill: hexShade(color, 0.25), stroke: color, "stroke-width": 1.4 }));
+    const ic = svg("text", { x: iconCx, y: iconCy + (hero ? 6 : 5), "text-anchor": "middle", "font-size": hero ? 20 : 15 }); ic.textContent = icon;
+    node.append(ic);
+    // texts
+    const tX = x + (hero ? 60 : 52);
+    const tEl = svg("text", { x: tX, y: y + (hero ? h / 2 - 6 : 25), class: "struct-t" + (hero ? " hero" : "") }); tEl.textContent = tx(title); tEl.setAttribute("fill", "#f2f2f7");
+    const sEl = svg("text", { x: tX, y: y + (hero ? h / 2 + 14 : 43), class: "struct-s" }); sEl.textContent = tx(sub);
     node.append(tEl, sEl);
+    if (hero) {
+      const crown = svg("text", { x: x + w - 20, y: y + 24, "text-anchor": "middle", "font-size": 16 }); crown.textContent = "👑";
+      node.append(crown);
+    }
     s.append(node);
   }
   const wrap = $("#structure"); wrap.innerHTML = ""; wrap.append(s);
