@@ -21,7 +21,7 @@ from flask import Flask, jsonify, render_template, request
 from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
-from mobile_e2e.web import archetypes, threads_client
+from mobile_e2e.web import archetypes, feed_source, threads_client
 from mobile_e2e.web.agent import AgentRunner
 from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
@@ -284,6 +284,64 @@ def create_app(
         created = archetypes.seed_prompts(db, lang)
         db.log("prompts.seed_viral", f"{created} viral templates")
         return jsonify({"created": created, "prompts": db.list_prompts()})
+
+    # -- feed / competitor intelligence -------------------------------------
+    @app.get("/api/feed/samples")
+    def list_feed_samples():
+        return jsonify(db.list_feed_samples())
+
+    @app.post("/api/feed/samples")
+    def add_feed_samples():
+        data = request.get_json(silent=True) or {}
+        items = data.get("examples") if isinstance(data.get("examples"), list) else [data]
+        added = 0
+        for it in items:
+            if not isinstance(it, dict) or not str(it.get("text", "")).strip():
+                continue
+            try:
+                if db.add_feed_sample(
+                    str(it.get("text", "")), author=str(it.get("author", "")),
+                    views=int(it.get("views") or 0), likes=int(it.get("likes") or 0),
+                    replies=int(it.get("replies") or 0), topic=str(it.get("topic", "")),
+                    url=str(it.get("url", "")),
+                ):
+                    added += 1
+            except (ValueError, TypeError):
+                continue
+        return jsonify({"added": added, "samples": db.list_feed_samples()}), 201
+
+    @app.delete("/api/feed/samples/<int:sample_id>")
+    def delete_feed_sample(sample_id: int):
+        db.delete_feed_sample(sample_id)
+        return jsonify({"deleted": sample_id})
+
+    @app.get("/api/feed/insights")
+    def feed_insights():
+        return jsonify(db.feed_insights())
+
+    @app.post("/api/feed/search")
+    def feed_search():
+        data = request.get_json(silent=True) or {}
+        keyword = str(data.get("keyword", "")).strip()
+        if not keyword:
+            return jsonify({"error": "keyword required"}), 400
+        try:
+            found = feed_source.search(keyword, limit=int(data.get("limit") or 15))
+        except feed_source.FeedSearchUnavailable as exc:
+            return jsonify({"available": False, "reason": str(exc)}), 200
+        except threads_client.ThreadsNotConfigured as exc:
+            return jsonify({"available": False, "reason": str(exc)}), 200
+        topic = str(data.get("topic", "")).strip()
+        stored = 0
+        for post in found:
+            if db.add_feed_sample(
+                post["text"], author=post.get("author", ""), likes=post.get("likes", 0),
+                replies=post.get("replies", 0), url=post.get("url", ""),
+                topic=topic, source="keyword_search",
+            ):
+                stored += 1
+        return jsonify({"available": True, "found": len(found), "stored_new": stored,
+                        "samples": db.list_feed_samples()})
 
     # -- autonomous agent (Gemini function-calling) -------------------------
     # In-memory conversation sessions so the agent has back-and-forth memory.

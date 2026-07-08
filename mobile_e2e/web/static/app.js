@@ -892,6 +892,7 @@ async function loadAnalytics(full) {
   renderAnalyticsAccounts(a.accounts);
   loadTopPosts();
   loadContentInsights();
+  loadFeedSamples();
   if (full) renderPicker(a.accounts);
 }
 function postText(r) {
@@ -947,8 +948,19 @@ async function loadContentInsights() {
   if (g.with_avg_views != null && g.without_avg_views != null)
     chips.append(el("span", { class: "chip " + (g.without_avg_views > g.with_avg_views ? "bad" : "good"),
       text: tf("insights.greeting", { a: g.with_avg_views, b: g.without_avg_views }) }));
+  if (p.avg_reply_rate != null)
+    chips.append(el("span", { class: "chip", text: tf("insights.replyrate", { v: p.avg_reply_rate }) }));
   wrap.append(chips);
-  // Top performers, verbatim, so she can read *why* they landed.
+  // Reply drivers first — replies are the reach engine on Threads.
+  const drivers = d.reply_drivers && d.reply_drivers.length ? d.reply_drivers : (d.top || []);
+  wrap.append(el("div", { class: "insight-label", text: t("insights.drivers") }));
+  const dlist = el("ol", { class: "insight-top" });
+  drivers.forEach(x => dlist.append(el("li", {},
+    el("span", { class: "insight-metric", text: `${x.reply_rate}‰ · ${x.replies}💬/${x.views}👁` }),
+    el("span", { class: "insight-snippet", text: x.text }))));
+  wrap.append(dlist);
+  // Top by reach.
+  wrap.append(el("div", { class: "insight-label", text: t("insights.reach") }));
   const list = el("ol", { class: "insight-top" });
   (d.top || []).forEach(x => list.append(el("li", {},
     el("span", { class: "insight-metric", text: `${x.views}👁 ${x.likes}❤ ${x.replies}💬` }),
@@ -957,6 +969,51 @@ async function loadContentInsights() {
 }
 const insRefresh = $("#insights-refresh");
 if (insRefresh) insRefresh.addEventListener("click", loadContentInsights);
+
+// -- feed / competitor intelligence -----------------------------------------
+function parseFeedLine(line) {
+  // "text | views likes replies"  or  "text" — trailing numbers optional.
+  const parts = line.split("|");
+  const text = parts[0].trim();
+  if (!text) return null;
+  const nums = (parts[1] || "").trim().split(/\s+/).map(Number).filter(n => !isNaN(n));
+  return { text, views: nums[0] || 0, likes: nums[1] || 0, replies: nums[2] || 0 };
+}
+async function loadFeedSamples() {
+  const wrap = $("#feed-samples"); if (!wrap) return;
+  const rows = await api("/api/feed/samples");
+  wrap.innerHTML = "";
+  if (!rows.length) { wrap.append(emptyState(t("feed.empty"), t("feed.empty.hint"), "🕵️")); return; }
+  const table = el("table");
+  table.append(headRow(["col.post", "col.views", "col.likes", "col.replies", ""]));
+  const tbody = el("tbody");
+  rows.forEach(r => tbody.append(el("tr", {},
+    el("td", { class: "top-text", title: r.text, text: r.text.length > 70 ? r.text.slice(0, 70) + "…" : r.text }),
+    td(String(r.views)), td(String(r.likes)), td(String(r.replies)),
+    el("td", {}, el("button", { class: "mini danger", text: "✕", onclick: async () => {
+      await api("/api/feed/samples/" + r.id, { method: "DELETE" }); loadFeedSamples(); } })))));
+  table.append(tbody); wrap.append(table);
+}
+const feedAdd = $("#feed-add");
+if (feedAdd) feedAdd.addEventListener("click", async () => {
+  const examples = ($("#feed-input").value || "").split("\n").map(parseFeedLine).filter(Boolean);
+  if (!examples.length) { toast(t("feed.need"), "warn"); return; }
+  const r = await jpost("/api/feed/samples", { examples });
+  toast(tf("feed.added", { n: r.added }), "success");
+  $("#feed-input").value = ""; loadFeedSamples();
+});
+const feedSearch = $("#feed-search");
+if (feedSearch) feedSearch.addEventListener("click", async () => {
+  const keyword = ($("#feed-keyword").value || "").trim();
+  if (!keyword) { toast(t("feed.need_kw"), "warn"); return; }
+  feedSearch.disabled = true;
+  try {
+    const r = await jpost("/api/feed/search", { keyword });
+    if (r.available === false) toast(t("feed.unavailable"), "warn", 7000);
+    else { toast(tf("feed.found", { n: r.stored_new }), "success"); loadFeedSamples(); }
+  } catch (err) { toast(String(err), "error", 6000); }
+  feedSearch.disabled = false;
+});
 function renderTrend(points) {
   const wrap = $("#analytics-trend"); wrap.innerHTML = "";
   const withData = points.filter(p => p.score != null);

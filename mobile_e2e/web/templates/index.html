@@ -379,6 +379,19 @@
           <div id="content-insights" class="insights"></div>
         </div>
         <div class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="feed.title">Разведка ленты (тренды конкурентов)</h2>
+            <div class="filters">
+              <input id="feed-keyword" data-i18n-ph="feed.kw.ph" placeholder="ключевое слово" style="max-width:170px" />
+              <button id="feed-search" class="mini ghost" data-i18n="feed.search">Найти в ленте</button>
+            </div>
+          </div>
+          <div class="hint" data-i18n="feed.hint" style="margin-bottom:8px">Вставьте залётные посts конкурентов (по одному в строке) с числами в конце — напр.: «Мужчины, изменяли ли вы? | 227000 252 227». Агент проанализирует и сделает лучше.</div>
+          <textarea id="feed-input" rows="3" data-i18n-ph="feed.input.ph" placeholder="текст поста | просмотры лайки ответы"></textarea>
+          <div class="form-actions"><button id="feed-add" class="mini" data-i18n="feed.add">Добавить примеры</button></div>
+          <div id="feed-samples" class="table-wrap"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2 data-i18n="an.ai">ИИ-аналитик</h2></div>
           <div class="hint" data-i18n="an.pick" style="margin-bottom:8px">Выберите аккаунты (пусто = все)</div>
           <div id="an-picker" class="picker"></div>

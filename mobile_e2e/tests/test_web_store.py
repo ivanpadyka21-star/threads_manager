@@ -318,7 +318,11 @@ def test_content_insights_learns_patterns(store):
     assert q["with_avg_views"] > q["without_avg_views"]  # questions win here
     g = ins["patterns"]["greeting"]
     assert g["without_avg_views"] > g["with_avg_views"]  # greeting underperforms
-    assert "TOP PERFORMERS" in ins["text"]
+    assert "REPLY CHAINS" in ins["text"]
+    # reply-rate = replies per 1000 views; the winner drives the most replies
+    assert ins["top"][0]["reply_rate"] == round(74 / 4000 * 1000, 1)
+    assert ins["reply_drivers"][0]["replies"] == 74
+    assert ins["patterns"]["avg_reply_rate"] is not None
 
 
 def test_content_insights_empty_without_metrics(store):
@@ -326,6 +330,39 @@ def test_content_insights_empty_without_metrics(store):
     assert ins["sample_count"] == 0
     assert ins["top"] == []
     assert "No published posts" in ins["text"]
+
+
+def test_feed_samples_add_dedupe_and_delete(store):
+    row = store.add_feed_sample("Мужчины, изменяли ли вы?", author="magiclisaa",
+                                views=227000, likes=252, replies=227)
+    assert row["id"] > 0 and row["author"] == "magiclisaa"
+    # identical text is deduped
+    assert store.add_feed_sample("Мужчины, изменяли ли вы?") is None
+    assert len(store.list_feed_samples()) == 1
+    store.delete_feed_sample(row["id"])
+    assert store.list_feed_samples() == []
+
+
+def test_feed_sample_requires_text(store):
+    with pytest.raises(ValueError):
+        store.add_feed_sample("   ")
+
+
+def test_feed_insights_ranks_by_reply_pull(store):
+    # High reach but few replies vs lower reach with a strong reply chain.
+    store.add_feed_sample("big reach few replies", views=100000, likes=10, replies=5)
+    store.add_feed_sample("reply chain monster", views=10000, likes=50, replies=400)
+    ins = store.feed_insights()
+    assert ins["sample_count"] == 2
+    assert ins["by_reach"][0]["views"] == 100000            # reach ranking
+    assert ins["by_replies"][0]["text"] == "reply chain monster"  # reply-pull ranking
+    assert "TREND INTELLIGENCE" in ins["text"]
+
+
+def test_feed_insights_empty(store):
+    ins = store.feed_insights()
+    assert ins["sample_count"] == 0
+    assert "No competitor" in ins["text"]
 
 
 def test_task_max_chars_stored(store):

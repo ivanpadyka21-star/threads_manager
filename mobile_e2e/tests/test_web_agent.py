@@ -61,6 +61,30 @@ def test_dispatch_get_viral_formats(store):
     assert out["formats"] and any(f["id"] == "chain_question_men" for f in out["formats"])
 
 
+def test_dispatch_add_competitor_examples_and_trends(store):
+    r = AgentRunner(store, client=MagicMock(), model="m")
+    out = r._dispatch("add_competitor_examples", {"examples": [
+        {"text": "Мужчины, изменяли ли вы?", "author": "x", "views": 227000, "replies": 227},
+        {"text": ""},  # skipped
+    ]})
+    assert out["added"] == 1
+    trends = r._dispatch("get_trend_insights", {})
+    assert trends["sample_count"] == 1
+    assert "summary" in trends
+
+
+def test_dispatch_search_feed_degrades_when_unavailable(store, monkeypatch):
+    from mobile_e2e.web import feed_source
+
+    def _boom(*a, **k):
+        raise feed_source.FeedSearchUnavailable("no permission")
+
+    monkeypatch.setattr(feed_source, "search", _boom)
+    r = AgentRunner(store, client=MagicMock(), model="m")
+    out = r._dispatch("search_feed", {"keyword": "измена"})
+    assert out["available"] is False and "reason" in out
+
+
 def test_dispatch_unknown_tool(store):
     r = AgentRunner(store, client=MagicMock(), model="m")
     assert "error" in r._dispatch("nope", {})

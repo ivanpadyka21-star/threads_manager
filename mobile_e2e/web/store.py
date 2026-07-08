@@ -135,6 +135,18 @@ class Store:
                     text TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS feed_samples (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source TEXT DEFAULT 'manual',
+                    author TEXT DEFAULT '',
+                    text TEXT NOT NULL,
+                    views INTEGER DEFAULT 0,
+                    likes INTEGER DEFAULT 0,
+                    replies INTEGER DEFAULT 0,
+                    topic TEXT DEFAULT '',
+                    url TEXT DEFAULT '',
+                    captured_at TEXT NOT NULL
+                );
                 """
             )
         # Migrate older databases that predate newer columns.
@@ -585,11 +597,26 @@ class Store:
         def _avg(group: List[dict]) -> Optional[float]:
             return round(sum(p["views"] for p in group) / len(group), 1) if group else None
 
-        top = [
-            {"views": p.get("views") or 0, "likes": p.get("likes") or 0,
-             "replies": p.get("replies") or 0, "text": _text(p)}
-            for p in sorted(posts, key=lambda p: p.get("views") or 0, reverse=True)[:5]
-        ]
+        def _reply_rate(p: dict) -> float:
+            # Replies per 1000 views — the closest proxy for the reply-chain
+            # engine that actually drives reach on Threads.
+            v = p.get("views") or 0
+            return round((p.get("replies") or 0) / v * 1000, 1) if v else 0.0
+
+        def _entry(p: dict) -> dict:
+            return {"views": p.get("views") or 0, "likes": p.get("likes") or 0,
+                    "replies": p.get("replies") or 0, "reply_rate": _reply_rate(p),
+                    "text": _text(p)}
+
+        top = [_entry(p) for p in
+               sorted(posts, key=lambda p: p.get("views") or 0, reverse=True)[:5]]
+        # Reply drivers: the real virality signal. Require a floor of views so a
+        # single reply on a tiny post doesn't top the chart.
+        floor = 50
+        eligible = [p for p in posts if (p.get("views") or 0) >= floor] or posts
+        reply_drivers = [_entry(p) for p in
+                         sorted(eligible, key=_reply_rate, reverse=True)[:5]
+                         if _reply_rate(p) > 0]
 
         # -- length buckets -------------------------------------------------
         buckets = {"short (<140)": [], "medium (140–320)": [], "long (>320)": []}
@@ -605,31 +632,43 @@ class Store:
             (with_q if "?" in t else without_q).append(p)
             (with_g if greet_re.search(t) else without_g).append(p)
 
+        # Average replies-per-1000-views across the sample (the reply-chain signal).
+        avg_reply_rate = (round(sum(_reply_rate(p) for p in posts) / len(posts), 1)
+                          if posts else None)
         patterns = {
             "by_length": {k: {"count": len(v), "avg_views": _avg(v)} for k, v in buckets.items()},
             "question": {"with_avg_views": _avg(with_q), "with_count": len(with_q),
                          "without_avg_views": _avg(without_q), "without_count": len(without_q)},
             "greeting": {"with_avg_views": _avg(with_g), "with_count": len(with_g),
                          "without_avg_views": _avg(without_g), "without_count": len(without_g)},
+            "avg_reply_rate": avg_reply_rate,
         }
         return {
             "sample_count": len(posts),
             "top": top,
+            "reply_drivers": reply_drivers,
             "patterns": patterns,
-            "text": self._insights_text(len(posts), top, patterns),
+            "text": self._insights_text(len(posts), top, reply_drivers, patterns),
         }
 
     @staticmethod
-    def _insights_text(n: int, top: List[dict], patterns: dict) -> str:
+    def _insights_text(n: int, top: List[dict], reply_drivers: List[dict], patterns: dict) -> str:
         """Render content_insights into a compact block for prompts / the agent."""
         if not n:
             return "No published posts with metrics yet — no performance data to learn from."
-        lines = [f"Learnings from {n} of your published posts (real Threads metrics):",
-                 "TOP PERFORMERS (views / likes / replies) — study why these landed:"]
+
+        def _snip(txt: str) -> str:
+            s = txt.replace("\n", " ")
+            return (s[:160] + "…") if len(s) > 160 else s
+
+        lines = [f"Learnings from {n} of your published posts (real Threads metrics).",
+                 "REPLY CHAINS DRIVE REACH — replies matter more than likes; prioritise "
+                 "posts that pull answers. Your best reply-drivers (replies per 1000 views):"]
+        for i, p in enumerate(reply_drivers or top, 1):
+            lines.append(f"  {i}. {p['reply_rate']}‰ ({p['replies']}r on {p['views']}v) — «{_snip(p['text'])}»")
+        lines.append("TOP BY REACH (views / likes / replies) — study why these landed:")
         for i, p in enumerate(top, 1):
-            snippet = p["text"].replace("\n", " ")
-            snippet = (snippet[:160] + "…") if len(snippet) > 160 else snippet
-            lines.append(f"  {i}. {p['views']}v / {p['likes']}l / {p['replies']}r — «{snippet}»")
+            lines.append(f"  {i}. {p['views']}v / {p['likes']}l / {p['replies']}r — «{_snip(p['text'])}»")
 
         def _cmp(label: str, a, b, a_name: str, b_name: str) -> Optional[str]:
             if a is None or b is None:
@@ -652,6 +691,96 @@ class Store:
         c = _cmp("Opening greeting", g["with_avg_views"], g["without_avg_views"], "posts that greet", "posts without a greeting")
         if c:
             lines.append(c)
+        return "\n".join(lines)
+
+    # -- feed / competitor intelligence -------------------------------------
+    def add_feed_sample(self, text: str, *, author: str = "", views: int = 0,
+                        likes: int = 0, replies: int = 0, topic: str = "",
+                        url: str = "", source: str = "manual") -> Optional[dict]:
+        """Record a competitor / trending post to learn from (deduped by text)."""
+        text = (text or "").strip()
+        if not text:
+            raise ValueError("Feed sample text is required.")
+        with self._lock, self._conn:
+            exists = self._conn.execute(
+                "SELECT id FROM feed_samples WHERE text = ?", (text,)
+            ).fetchone()
+            if exists:
+                return None
+            cur = self._conn.execute(
+                """INSERT INTO feed_samples
+                   (source, author, text, views, likes, replies, topic, url, captured_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (source, author.strip(), text, int(views or 0), int(likes or 0),
+                 int(replies or 0), topic.strip(), url.strip(), _now()),
+            )
+            sid = cur.lastrowid
+        self.log("feed.sample", f"{source}: {text[:60]}")
+        return self.get_feed_sample(sid)
+
+    def get_feed_sample(self, sample_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM feed_samples WHERE id = ?", (sample_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_feed_samples(self, limit: int = 100) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM feed_samples ORDER BY captured_at DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_feed_sample(self, sample_id: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM feed_samples WHERE id = ?", (sample_id,))
+
+    def feed_insights(self, limit: int = 80) -> dict:
+        """Analyse stored competitor/trend samples: the best examples by reach and
+        by reply-pull, so the strategist can ride fresh niche trends and beat them.
+        """
+        samples = self.list_feed_samples(limit=limit)
+
+        def _reply_rate(s: dict) -> float:
+            v = s.get("views") or 0
+            return round((s.get("replies") or 0) / v * 1000, 1) if v else 0.0
+
+        def _entry(s: dict) -> dict:
+            txt = (s.get("text") or "").replace("\n", " ")
+            return {"author": s.get("author") or "", "views": s.get("views") or 0,
+                    "likes": s.get("likes") or 0, "replies": s.get("replies") or 0,
+                    "reply_rate": _reply_rate(s), "topic": s.get("topic") or "",
+                    "text": (txt[:200] + "…") if len(txt) > 200 else txt}
+
+        by_reach = [_entry(s) for s in
+                    sorted(samples, key=lambda s: s.get("views") or 0, reverse=True)[:8]]
+        by_replies = [_entry(s) for s in
+                      sorted(samples, key=_reply_rate, reverse=True)[:8]
+                      if _reply_rate(s) > 0]
+        return {
+            "sample_count": len(samples),
+            "by_reach": by_reach,
+            "by_replies": by_replies,
+            "text": self._feed_text(len(samples), by_reach, by_replies),
+        }
+
+    @staticmethod
+    def _feed_text(n: int, by_reach: List[dict], by_replies: List[dict]) -> str:
+        if not n:
+            return ("No competitor/feed samples captured yet — add trending posts "
+                    "from your niche to learn what is working right now.")
+        lines = [f"NICHE TREND INTELLIGENCE from {n} competitor/feed posts. Study the "
+                 "angle and format, then write something in the same vein but BETTER "
+                 "and in the account's own voice (never copy):",
+                 "Highest REPLY-PULL (replies per 1000 views — the viral engine):"]
+        for i, s in enumerate(by_replies or by_reach, 1):
+            who = f"@{s['author']} " if s["author"] else ""
+            lines.append(f"  {i}. {s['reply_rate']}‰ ({s['replies']}r/{s['views']}v) {who}— «{s['text']}»")
+        lines.append("Highest REACH:")
+        for i, s in enumerate(by_reach, 1):
+            who = f"@{s['author']} " if s["author"] else ""
+            lines.append(f"  {i}. {s['views']}v/{s['likes']}l/{s['replies']}r {who}— «{s['text']}»")
         return "\n".join(lines)
 
     def set_task_result(self, task_id: int, result: str) -> None:

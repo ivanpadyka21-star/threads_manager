@@ -399,6 +399,8 @@ label.auto input { width: auto; margin: 0; }
 .insight-top li::before { content: counter(ins); font-weight: 700; color: var(--accent); min-width: 14px; }
 .insight-metric { font: 12px "JetBrains Mono", ui-monospace, monospace; color: var(--muted); white-space: nowrap; }
 .insight-snippet { font-size: 13px; line-height: 1.45; }
+.insight-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 12px 0 6px; }
+.insight-label:first-child { margin-top: 0; }
 
 /* Analytics controls */
 .an-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }

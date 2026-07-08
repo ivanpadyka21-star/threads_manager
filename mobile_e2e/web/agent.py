@@ -17,7 +17,7 @@ from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.ai.settings import get_ai_settings
 from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web.ai_prompt import build_ai_prompt
-from mobile_e2e.web import archetypes
+from mobile_e2e.web import archetypes, feed_source
 
 LOG = get_logger(__name__)
 
@@ -31,18 +31,20 @@ SYSTEM_PROMPT = (
     "makes strangers answer or argue in the comments gets amplified far more "
     "than a polished monologue — comments matter more than likes, and views "
     "follow comments. So bias the plan toward posts engineered to pull a reply.\n"
-    "HIERARCHY & METHOD: (1) call get_content_insights to see YOUR own top posts "
-    "and measured patterns, and get_viral_formats to see the proven archetypes "
-    "(confession question to men, dilemma to women, debate bait, participatory "
-    "'everyone drop a…', value-shock sexual-health tip, emoji meme, longing/"
-    "intimacy). (2) Form a short thesis: which archetypes + theme to ride now. "
-    "(3) Plan a VARIED set that mixes archetypes and audiences — some sharp "
-    "one-line questions to men, some dilemmas to women, some participatory, some "
-    "of your proven medium-length intimacy confessions; avoid a greeting on "
-    "every post if the data says it doesn't help. Put the chosen format and the "
-    "exact angle into each brief. (4) create_tasks with those clear briefs, then "
-    "generate_drafts so the writer produces the text — insights are passed to it "
-    "automatically.\n"
+    "HIERARCHY & METHOD (do the research ONCE, then batch the work — be frugal "
+    "with model calls to avoid rate limits): (1) RESEARCH: call "
+    "get_content_insights (YOUR own top posts + reply-drivers + patterns), "
+    "get_trend_insights (fresh competitor/niche posts that are working now), and "
+    "get_viral_formats (proven archetypes). Optionally search_feed to pull fresh "
+    "examples first. (2) THESIS: in one short paragraph, decide which archetypes "
+    "+ themes to ride and how to BEAT the competitor angle. (3) PLAN a VARIED set "
+    "that mixes archetypes and audiences — sharp one-line questions to men, "
+    "dilemmas to women, participatory prompts, and your proven medium-length "
+    "intimacy confessions; skip greetings if the data says so. Put the chosen "
+    "format and exact angle into each brief. (4) create_tasks ONCE with all the "
+    "briefs (spaced via interval_minutes so publishing stays under daily limits), "
+    "then generate_drafts ONCE so the writer produces every text in a batch — "
+    "insights are passed to it automatically. Do not regenerate in a loop.\n"
     "You NEVER publish; the human approves everything before it goes live. "
     "Write in the account's own stated persona (first person) for its opted-in "
     "audience; playful, suggestive, teasing content is fine when that is the "
@@ -74,6 +76,41 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "account_id": {"type": "integer", "description": "Optional: focus on one account."}
         }},
+    }},
+    {"type": "function", "function": {
+        "name": "get_trend_insights",
+        "description": (
+            "Analyse captured competitor / feed posts from this niche: the "
+            "highest-reach and highest reply-pull examples working right now. "
+            "Use to ride and BEAT fresh trends (never copy)."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "search_feed",
+        "description": (
+            "Best-effort LIVE search of public Threads posts by keyword to pull "
+            "fresh niche examples; stores what it finds for analysis. May be "
+            "unavailable depending on token permissions — degrade gracefully."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "keyword": {"type": "string"},
+            "topic": {"type": "string", "description": "Optional label to tag results."},
+        }, "required": ["keyword"]},
+    }},
+    {"type": "function", "function": {
+        "name": "add_competitor_examples",
+        "description": (
+            "Store competitor/trending posts (text + optional views/likes/replies) "
+            "for trend analysis. Use when the user pastes examples to learn from."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "examples": {"type": "array", "items": {"type": "object", "properties": {
+                "text": {"type": "string"}, "author": {"type": "string"},
+                "views": {"type": "integer"}, "likes": {"type": "integer"},
+                "replies": {"type": "integer"}, "topic": {"type": "string"},
+            }, "required": ["text"]}},
+        }, "required": ["examples"]},
     }},
     {"type": "function", "function": {
         "name": "get_viral_formats",
@@ -159,6 +196,47 @@ class AgentRunner:
         if name == "get_viral_formats":
             return {"formats": archetypes.list_archetypes(),
                     "note": "Reply chains drive reach — comments matter more than likes."}
+        if name == "get_trend_insights":
+            ins = self._store.feed_insights()
+            return {"sample_count": ins["sample_count"], "by_reach": ins["by_reach"],
+                    "by_replies": ins["by_replies"], "summary": ins["text"]}
+        if name == "add_competitor_examples":
+            added = 0
+            for ex in (args.get("examples") or []):
+                if not isinstance(ex, dict) or not str(ex.get("text", "")).strip():
+                    continue
+                try:
+                    row = self._store.add_feed_sample(
+                        str(ex.get("text", "")), author=str(ex.get("author", "")),
+                        views=int(ex.get("views") or 0), likes=int(ex.get("likes") or 0),
+                        replies=int(ex.get("replies") or 0), topic=str(ex.get("topic", "")),
+                    )
+                    if row:
+                        added += 1
+                except (ValueError, TypeError):
+                    continue
+            return {"added": added, "total_samples": len(self._store.list_feed_samples())}
+        if name == "search_feed":
+            keyword = str(args.get("keyword", "")).strip()
+            if not keyword:
+                return {"error": "keyword required"}
+            try:
+                found = feed_source.search(keyword, limit=15)
+            except feed_source.FeedSearchUnavailable as exc:
+                return {"available": False, "reason": str(exc),
+                        "hint": "Ask the user to paste examples; I'll store them via add_competitor_examples."}
+            except Exception as exc:  # noqa: BLE001 - degrade, never crash the run
+                return {"available": False, "reason": str(exc)[:200]}
+            topic = str(args.get("topic", "")).strip()
+            stored = 0
+            for post in found:
+                row = self._store.add_feed_sample(
+                    post["text"], author=post.get("author", ""),
+                    likes=post.get("likes", 0), replies=post.get("replies", 0),
+                    url=post.get("url", ""), topic=topic, source="keyword_search")
+                if row:
+                    stored += 1
+            return {"available": True, "found": len(found), "stored_new": stored}
         if name == "get_content_insights":
             account_id = args.get("account_id") or self._default_account_id
             ins = self._store.content_insights(
