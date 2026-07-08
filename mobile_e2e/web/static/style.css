@@ -389,6 +389,17 @@ label.auto input { width: auto; margin: 0; }
 .chip:hover { border-color: var(--accent); }
 .an-output { margin-top: 12px; background: #08080b; color: #d6d6e2; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; min-height: 90px; max-height: 320px; overflow: auto; white-space: pre-wrap; font: 12.5px/1.55 "JetBrains Mono", ui-monospace, monospace; }
 
+/* Content insights ("what works") */
+.insight-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.insight-chips .chip { cursor: default; }
+.insight-chips .chip.good { border-color: color-mix(in srgb, var(--teal, #2ec4b6) 55%, transparent); color: var(--teal, #2ec4b6); }
+.insight-chips .chip.bad { border-color: color-mix(in srgb, var(--pink, #ff5da2) 55%, transparent); color: var(--pink, #ff5da2); }
+.insight-top { list-style: none; counter-reset: ins; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.insight-top li { counter-increment: ins; display: flex; gap: 10px; align-items: baseline; padding: 8px 10px; background: color-mix(in srgb, var(--accent) 6%, transparent); border: 1px solid var(--border); border-radius: 10px; }
+.insight-top li::before { content: counter(ins); font-weight: 700; color: var(--accent); min-width: 14px; }
+.insight-metric { font: 12px "JetBrains Mono", ui-monospace, monospace; color: var(--muted); white-space: nowrap; }
+.insight-snippet { font-size: 13px; line-height: 1.45; }
+
 /* Analytics controls */
 .an-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 .an-controls .win { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; color: var(--dim); font-size: 12px; }

@@ -56,6 +56,20 @@ def test_task_max_chars_overrides_limit():
     assert "480 characters" not in system
 
 
+def test_insights_injected_into_prompt():
+    system, _ = build_ai_prompt(
+        {"kind": "post", "payload": "hi"},
+        insights="TOP PERFORMERS: 1. 4000v — «...»",
+    )
+    assert "PERFORMANCE DATA" in system
+    assert "TOP PERFORMERS" in system
+
+
+def test_no_insights_block_when_absent():
+    system, _ = build_ai_prompt({"kind": "post", "payload": "hi"})
+    assert "PERFORMANCE DATA" not in system
+
+
 def test_clamp_truncates_long_text():
     from mobile_e2e.web.publish import _clamp
 

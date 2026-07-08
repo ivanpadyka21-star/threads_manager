@@ -86,7 +86,9 @@ def create_app(
         tasks = db.list_batch(batch_id)
         for i, task in enumerate(tasks):
             account = db.get_account(task["account_id"]) if task["account_id"] else None
-            system_prompt, user_prompt = build_ai_prompt(task, account)
+            insights = db.content_insights(
+                account_id=task["account_id"] if task["account_id"] else None)["text"]
+            system_prompt, user_prompt = build_ai_prompt(task, account, insights=insights)
             try:
                 draft = AIAgent(system_prompt).generate_response(user_prompt)
                 db.set_task_result(task["id"], draft)
@@ -352,6 +354,11 @@ def create_app(
             "when": r["updated_at"],
         } for r in rows])
 
+    @app.get("/api/analytics/content-insights")
+    def content_insights():
+        account_id = request.args.get("account_id", type=int)
+        return jsonify(db.content_insights(account_id=account_id))
+
     @app.get("/api/threads/status")
     def threads_status():
         account_id = request.args.get("account_id", type=int)
@@ -446,7 +453,8 @@ def create_app(
 
         account_id = task.get("account_id")
         account = db.get_account(account_id) if account_id else None
-        system_prompt, user_prompt = build_ai_prompt(task, account)
+        insights = db.content_insights(account_id=account_id if account_id else None)["text"]
+        system_prompt, user_prompt = build_ai_prompt(task, account, insights=insights)
         agent = AIAgent(system_prompt)
         try:
             draft = agent.generate_response(user_prompt)

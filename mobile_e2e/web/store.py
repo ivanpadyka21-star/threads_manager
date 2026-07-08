@@ -551,6 +551,109 @@ class Store:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def content_insights(self, account_id: Optional[int] = None, limit: int = 60) -> dict:
+        """Learn what works from real Threads metrics on published posts.
+
+        Analyses the text of published posts against their view/like/reply
+        numbers and derives simple, honest patterns: which length wins, whether
+        a direct question helps, whether opening with a greeting helps. Returns
+        the top posts (verbatim, so the writer can study *why* they landed) plus
+        a compact ``text`` summary ready to drop into a prompt.
+
+        This is the data half of the quality loop: the agent reads it and steers
+        the writer toward what the audience actually rewards.
+        """
+        with self._lock:
+            if account_id:
+                rows = self._conn.execute(
+                    "SELECT * FROM tasks WHERE published_id != '' AND published_id IS NOT NULL "
+                    "AND account_id = ? ORDER BY views DESC LIMIT ?", (account_id, limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM tasks WHERE published_id != '' AND published_id IS NOT NULL "
+                    "ORDER BY views DESC LIMIT ?", (limit,),
+                ).fetchall()
+        posts = [dict(r) for r in rows]
+        # Only posts that actually carry metrics are informative.
+        posts = [p for p in posts if (p.get("views") or 0) > 0]
+
+        def _text(p: dict) -> str:
+            raw = (p.get("result") or p.get("title") or "").strip()
+            return re.sub(r"^\[published [^\]]*\]\s*", "", raw)
+
+        def _avg(group: List[dict]) -> Optional[float]:
+            return round(sum(p["views"] for p in group) / len(group), 1) if group else None
+
+        top = [
+            {"views": p.get("views") or 0, "likes": p.get("likes") or 0,
+             "replies": p.get("replies") or 0, "text": _text(p)}
+            for p in sorted(posts, key=lambda p: p.get("views") or 0, reverse=True)[:5]
+        ]
+
+        # -- length buckets -------------------------------------------------
+        buckets = {"short (<140)": [], "medium (140–320)": [], "long (>320)": []}
+        greet_re = re.compile(
+            r"^\s*(прив[іе]т|доброго|добрий|доброї|хай|hi|hey|hello|друз[іи]|"
+            r"дівчат|дівчатка|хлопц|коханий|котик|привітики)", re.IGNORECASE)
+        with_q, without_q, with_g, without_g = [], [], [], []
+        for p in posts:
+            t = _text(p)
+            n = len(t)
+            (buckets["short (<140)"] if n < 140 else
+             buckets["medium (140–320)"] if n <= 320 else buckets["long (>320)"]).append(p)
+            (with_q if "?" in t else without_q).append(p)
+            (with_g if greet_re.search(t) else without_g).append(p)
+
+        patterns = {
+            "by_length": {k: {"count": len(v), "avg_views": _avg(v)} for k, v in buckets.items()},
+            "question": {"with_avg_views": _avg(with_q), "with_count": len(with_q),
+                         "without_avg_views": _avg(without_q), "without_count": len(without_q)},
+            "greeting": {"with_avg_views": _avg(with_g), "with_count": len(with_g),
+                         "without_avg_views": _avg(without_g), "without_count": len(without_g)},
+        }
+        return {
+            "sample_count": len(posts),
+            "top": top,
+            "patterns": patterns,
+            "text": self._insights_text(len(posts), top, patterns),
+        }
+
+    @staticmethod
+    def _insights_text(n: int, top: List[dict], patterns: dict) -> str:
+        """Render content_insights into a compact block for prompts / the agent."""
+        if not n:
+            return "No published posts with metrics yet — no performance data to learn from."
+        lines = [f"Learnings from {n} of your published posts (real Threads metrics):",
+                 "TOP PERFORMERS (views / likes / replies) — study why these landed:"]
+        for i, p in enumerate(top, 1):
+            snippet = p["text"].replace("\n", " ")
+            snippet = (snippet[:160] + "…") if len(snippet) > 160 else snippet
+            lines.append(f"  {i}. {p['views']}v / {p['likes']}l / {p['replies']}r — «{snippet}»")
+
+        def _cmp(label: str, a, b, a_name: str, b_name: str) -> Optional[str]:
+            if a is None or b is None:
+                return None
+            if a > b:
+                return f"{label}: {a_name} average {a} views vs {b_name} {b} → favour {a_name}."
+            if b > a:
+                return f"{label}: {b_name} average {b} views vs {a_name} {a} → favour {b_name}."
+            return None
+
+        by_len = [(k, v["avg_views"]) for k, v in patterns["by_length"].items() if v["avg_views"]]
+        if by_len:
+            best = max(by_len, key=lambda kv: kv[1])
+            lines.append(f"Length: best-performing bucket is {best[0]} ({best[1]} avg views).")
+        q = patterns["question"]
+        c = _cmp("Direct question", q["with_avg_views"], q["without_avg_views"], "posts with a ?", "posts without")
+        if c:
+            lines.append(c)
+        g = patterns["greeting"]
+        c = _cmp("Opening greeting", g["with_avg_views"], g["without_avg_views"], "posts that greet", "posts without a greeting")
+        if c:
+            lines.append(c)
+        return "\n".join(lines)
+
     def set_task_result(self, task_id: int, result: str) -> None:
         with self._lock, self._conn:
             self._conn.execute(

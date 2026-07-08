@@ -42,6 +42,19 @@ def test_dispatch_get_analytics(store):
     assert "effectiveness" in out and "ai" in out
 
 
+def test_dispatch_get_content_insights(store):
+    acc = store.add_account(name="A")
+    t = store.add_task(account_id=acc["id"], title="w", payload="Що вам треба?")
+    store.set_task_result(t["id"], "Що вам треба?")
+    store.set_task_published(t["id"], "111")
+    store.set_task_metrics(t["id"], views=500, likes=30, replies=9)
+    r = AgentRunner(store, client=MagicMock(), model="m")
+    out = r._dispatch("get_content_insights", {})
+    assert out["sample_count"] == 1
+    assert out["top"][0]["views"] == 500
+    assert "summary" in out
+
+
 def test_dispatch_unknown_tool(store):
     r = AgentRunner(store, client=MagicMock(), model="m")
     assert "error" in r._dispatch("nope", {})

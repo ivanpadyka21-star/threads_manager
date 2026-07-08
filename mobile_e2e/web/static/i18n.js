@@ -136,6 +136,11 @@ const TRANSLATIONS = {
     "top.updated": "Обновлено постов: {n}", "top.empty": "Пока нет опубликованных постов с метриками",
     "top.empty.hint": "Опубликуйте посты и нажмите «Обновить метрики»",
     "col.post": "Пост", "col.views": "Просмотры", "col.likes": "Лайки", "col.replies": "Ответы",
+    "insights.title": "Что работает (глубокий анализ)", "insights.refresh": "Обновить",
+    "insights.empty": "Пока нет данных для анализа", "insights.empty.hint": "Опубликуйте посты и обновите метрики",
+    "insights.length": "Лучшая длина: {b} (~{v} просм.)",
+    "insights.question": "Вопрос заходит: с «?» ~{a} vs без {b}",
+    "insights.greeting": "Приветствие: с ним ~{a} vs без {b}",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -270,6 +275,11 @@ const TRANSLATIONS = {
     "top.updated": "Posts updated: {n}", "top.empty": "No published posts with metrics yet",
     "top.empty.hint": "Publish posts and click Refresh metrics",
     "col.post": "Post", "col.views": "Views", "col.likes": "Likes", "col.replies": "Replies",
+    "insights.title": "What works (deep analysis)", "insights.refresh": "Refresh",
+    "insights.empty": "No data to analyse yet", "insights.empty.hint": "Publish posts and refresh metrics",
+    "insights.length": "Best length: {b} (~{v} views)",
+    "insights.question": "Questions win: with “?” ~{a} vs without {b}",
+    "insights.greeting": "Greeting: with ~{a} vs without {b}",
   },
 };
 

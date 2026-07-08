@@ -465,7 +465,7 @@ function renderStructure() {
     claude:    [556, 16, 244, 56, "agent",    { ru: "Claude (оркестратор)", en: "Claude (orchestrator)" }, { ru: "через API · направляет агента", en: "via API · directs the agent" }],
     dash:      [300, 106, 220, 56, "ui",       { ru: "Дашборд (Flask + UI)", en: "Dashboard (Flask + UI)" }, { ru: "вкладки · роуты · i18n", en: "tabs · routes · i18n" }],
     studio:    [232, 200, 216, 60, "ai",       { ru: "Студия / Планировщик", en: "Studio / Planner" }, { ru: "промт → темы → задачи", en: "prompt → topics → tasks" }],
-    agent:     [556, 200, 216, 60, "agent",    { ru: "Автопилот-агент", en: "Autopilot agent" }, { ru: "function-calling", en: "function-calling" }],
+    agent:     [556, 200, 216, 60, "agent",    { ru: "Агент-стратег", en: "Strategist agent" }, { ru: "учится на метриках → промты", en: "learns from metrics → prompts" }],
     gemini:    [812, 196, 168, 68, "ext",      { ru: "Gemini API", en: "Gemini API" }, { ru: "flash → lite (свап)", en: "flash → lite (fallback)" }],
     store:     [352, 300, 300, 60, "data",     { ru: "Хранилище (SQLite)", en: "Store (SQLite)" }, { ru: "аккаунты·задачи·промты·аудит", en: "accounts·tasks·prompts·audit" }],
     approval:  [392, 398, 220, 56, "action",   { ru: "Одобрение", en: "Approval" }, { ru: "человек в цикле", en: "human-in-the-loop" }],
@@ -517,6 +517,8 @@ function renderStructure() {
   arrow("scheduler", "threads");
   arrow("store", "analytics", { fs: "r", ts: "l", label: tx({ ru: "читает", en: "reads" }) });
   arrow("analytics", "gemini", { fs: "t", ts: "b", dash: true });
+  // Quality feedback loop: real metrics steer the strategist (and thus the writer).
+  arrow("analytics", "agent", { fs: "t", ts: "b", dash: true, label: tx({ ru: "что работает", en: "what works" }) });
 
   // nodes
   for (const [id, [x, y, w, h, cat, title, sub]] of Object.entries(N)) {
@@ -879,6 +881,7 @@ async function loadAnalytics(full) {
   renderTrend(trend);
   renderAnalyticsAccounts(a.accounts);
   loadTopPosts();
+  loadContentInsights();
   if (full) renderPicker(a.accounts);
 }
 function postText(r) {
@@ -909,6 +912,41 @@ if (topRefresh) topRefresh.addEventListener("click", async () => {
   } catch (err) { toast(String(err), "error", 6000); }
   topRefresh.disabled = false; topRefresh.textContent = lbl;
 });
+async function loadContentInsights() {
+  const wrap = $("#content-insights"); if (!wrap) return;
+  let d;
+  try { d = await api("/api/analytics/content-insights"); }
+  catch (err) { wrap.innerHTML = ""; wrap.append(emptyState(String(err), "", "🧠")); return; }
+  wrap.innerHTML = "";
+  if (!d.sample_count) {
+    wrap.append(emptyState(t("insights.empty"), t("insights.empty.hint"), "🧠"));
+    return;
+  }
+  // Measured patterns as chips.
+  const chips = el("div", { class: "insight-chips" });
+  const p = d.patterns || {};
+  const bestLen = Object.entries(p.by_length || {})
+    .filter(([, v]) => v.avg_views != null)
+    .sort((a, b) => b[1].avg_views - a[1].avg_views)[0];
+  if (bestLen) chips.append(el("span", { class: "chip", text: tf("insights.length", { b: bestLen[0], v: bestLen[1].avg_views }) }));
+  const q = p.question || {};
+  if (q.with_avg_views != null && q.without_avg_views != null)
+    chips.append(el("span", { class: "chip " + (q.with_avg_views >= q.without_avg_views ? "good" : "bad"),
+      text: tf("insights.question", { a: q.with_avg_views, b: q.without_avg_views }) }));
+  const g = p.greeting || {};
+  if (g.with_avg_views != null && g.without_avg_views != null)
+    chips.append(el("span", { class: "chip " + (g.without_avg_views > g.with_avg_views ? "bad" : "good"),
+      text: tf("insights.greeting", { a: g.with_avg_views, b: g.without_avg_views }) }));
+  wrap.append(chips);
+  // Top performers, verbatim, so she can read *why* they landed.
+  const list = el("ol", { class: "insight-top" });
+  (d.top || []).forEach(x => list.append(el("li", {},
+    el("span", { class: "insight-metric", text: `${x.views}👁 ${x.likes}❤ ${x.replies}💬` }),
+    el("span", { class: "insight-snippet", text: x.text }))));
+  wrap.append(list);
+}
+const insRefresh = $("#insights-refresh");
+if (insRefresh) insRefresh.addEventListener("click", loadContentInsights);
 function renderTrend(points) {
   const wrap = $("#analytics-trend"); wrap.innerHTML = "";
   const withData = points.filter(p => p.score != null);

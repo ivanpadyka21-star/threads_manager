@@ -21,16 +21,27 @@ from mobile_e2e.web.ai_prompt import build_ai_prompt
 LOG = get_logger(__name__)
 
 SYSTEM_PROMPT = (
-    "You are an SMM planning assistant operating a content dashboard for the "
-    "account owner. You can plan posts, read analytics, and CREATE PENDING "
-    "tasks for the user to review — you NEVER publish anything yourself; the "
-    "human approves before anything goes live. Write in the account's own "
-    "stated persona (first person) for its opted-in audience; playful, "
-    "suggestive engagement content (e.g. teasing questions to the audience) is "
-    "fine when that is the account's style. Do not impersonate a different, "
-    "real individual, and do not write sexually explicit/pornographic text. "
-    "Work step by step: use the tools, keep posts within the requested length, "
-    "then briefly summarise what you did."
+    "You are the CONTENT STRATEGIST operating a content dashboard for the "
+    "account owner. Your job is quality: study real performance data, reason "
+    "about WHY posts landed (the psychology — vulnerability, intimacy, a "
+    "personal confession, a direct question people feel compelled to answer), "
+    "and then steer the writer model toward more of what works.\n"
+    "HIERARCHY & METHOD: (1) call get_content_insights FIRST to see the "
+    "top-performing posts and the measured patterns (best length, whether a "
+    "direct question helps, whether greeting helps). (2) Form a short thesis: "
+    "what theme/tone/format the audience rewards right now. (3) Plan a VARIED "
+    "set — lean into the winning direction (personal, intimacy/closeness, a "
+    "little playful spice) but vary it: some short and punchy, some deep and "
+    "heartfelt; some a direct question to men, some to women, some to both; "
+    "avoid a greeting on every post if the data says it doesn't help. (4) "
+    "create_tasks with clear, specific briefs, then generate_drafts so the "
+    "writer produces the text — the insights are passed to it automatically.\n"
+    "You NEVER publish; the human approves everything before it goes live. "
+    "Write in the account's own stated persona (first person) for its opted-in "
+    "audience; playful, suggestive, teasing content is fine when that is the "
+    "account's style. Do not impersonate a different, real individual, and do "
+    "not write sexually explicit/pornographic text. Finish by summarising your "
+    "thesis and what you queued, in the user's language."
 )
 
 TOOLS = [
@@ -44,6 +55,17 @@ TOOLS = [
         "description": "Get the effectiveness score, problems and AI stats over a window.",
         "parameters": {"type": "object", "properties": {
             "hours": {"type": "number", "description": "Window in hours (default 24)."}
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "get_content_insights",
+        "description": (
+            "Read what actually works from REAL post metrics: the top-performing "
+            "posts (verbatim) and measured patterns (best length, whether a "
+            "direct question or a greeting helps). Call this before planning."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "account_id": {"type": "integer", "description": "Optional: focus on one account."}
         }},
     }},
     {"type": "function", "function": {
@@ -116,6 +138,12 @@ class AgentRunner:
             eff = self._store.effectiveness(hours=hours)
             return {"effectiveness": eff["score"], "problems": eff["problems"],
                     "ai": self._store.ai_stats(hours=hours)}
+        if name == "get_content_insights":
+            account_id = args.get("account_id") or self._default_account_id
+            ins = self._store.content_insights(
+                account_id=int(account_id) if account_id else None)
+            return {"sample_count": ins["sample_count"], "top": ins["top"],
+                    "patterns": ins["patterns"], "summary": ins["text"]}
         if name == "create_tasks":
             posts = [str(p).strip() for p in (args.get("posts") or []) if str(p).strip()][:10]
             if not posts:
@@ -145,7 +173,9 @@ class AgentRunner:
             done = 0
             for task in tasks:
                 account = self._store.get_account(task["account_id"]) if task["account_id"] else None
-                sys_p, usr_p = build_ai_prompt(task, account)
+                insights = self._store.content_insights(
+                    account_id=task["account_id"] if task.get("account_id") else None)["text"]
+                sys_p, usr_p = build_ai_prompt(task, account, insights=insights)
                 try:
                     draft = AIAgent(sys_p).generate_response(usr_p)
                     self._store.set_task_result(task["id"], draft)

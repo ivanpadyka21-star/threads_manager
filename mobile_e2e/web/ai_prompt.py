@@ -23,7 +23,8 @@ _KIND_ACTION = {
 
 
 def build_ai_prompt(
-    task: dict, account: Optional[dict] = None, char_limit: int = 480
+    task: dict, account: Optional[dict] = None, char_limit: int = 480,
+    insights: Optional[str] = None,
 ) -> Tuple[str, str]:
     """Return ``(system_prompt, user_prompt)`` for :class:`AIAgent`.
 
@@ -32,6 +33,9 @@ def build_ai_prompt(
         account: Optional account row (name, handle, tone).
         char_limit: Hard cap on output length; Threads rejects posts over 500
             characters, so the default leaves a safety margin.
+        insights: Optional "what works" summary from real post metrics
+            (``store.content_insights()['text']``). When present it is injected
+            so drafts lean into what the audience actually rewards.
 
     Returns:
         A tuple of the system instruction and the user message.
@@ -82,6 +86,12 @@ def build_ai_prompt(
         "(it will be rejected otherwise). Be concise. "
         "Output only the content itself, no explanations."
     )
+    if insights and insights.strip():
+        sys_lines.append(
+            "PERFORMANCE DATA — lean into what the real audience rewards, do not "
+            "copy the examples verbatim but absorb why they worked (the personal, "
+            "intimate, vulnerable, direct tone) and apply it here:\n" + insights.strip()
+        )
 
     # --- user prompt: the concrete ask ------------------------------------
     user_lines = []
