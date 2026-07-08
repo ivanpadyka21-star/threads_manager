@@ -114,11 +114,44 @@ def test_scheduler_runs_once_per_day_when_due(store):
     store.set_setting(S_HOUR, "0")  # any hour qualifies
     sched = StrategyScheduler(store, cycle_factory=lambda acc: _Rec(ran))
     sched.tick()
-    assert len(ran) == 1
+    assert len(ran) == 1  # no accounts -> single global run
     # second tick same day is a no-op (claimed via last_date)
     sched.tick()
     assert len(ran) == 1
     assert store.get_setting(S_LAST_DATE)
+
+
+def test_scheduler_runs_for_every_active_account(store):
+    seen = []
+    store.add_account(name="A")
+    store.add_account(name="B")
+    store.set_setting(S_ENABLED, "1")
+    store.set_setting(S_HOUR, "0")
+
+    def factory(acc):
+        seen.append(acc)
+        return _Rec([])
+
+    StrategyScheduler(store, cycle_factory=factory).tick()
+    assert len(seen) == 2  # one cycle per active account
+
+
+def test_goal_is_injected_into_context(store):
+    acc = store.add_account(name="A", persona="p")
+    store.set_setting("strategy_goal_views", "20000")
+    store.set_setting("strategy_goal_comments", "300")
+    ctx = StrategyCycle(store, account_id=acc["id"], agent_factory=_factory).build_context(6, "Ukrainian")
+    assert "20000 views and 300 comments" in ctx
+    assert "GOAL" in ctx
+
+
+def test_goal_progress_sums_published_metrics(store):
+    acc = store.add_account(name="A")
+    t = store.add_task(account_id=acc["id"], title="x")
+    store.set_task_published(t["id"], "1")
+    store.set_task_metrics(t["id"], views=500, likes=10, replies=25)
+    prog = store.goal_progress(account_id=acc["id"], days=30)
+    assert prog["views"] == 500 and prog["replies"] == 25
 
 
 class _Rec:

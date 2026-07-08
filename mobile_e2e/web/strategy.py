@@ -42,6 +42,10 @@ PLANNER_SYSTEM = (
     "likes, and views follow comments. Your job: read the real performance data, "
     "the niche/feed trends, and the proven formats, then design ONE day's worth "
     "of posts that beat the competition and pull replies.\n"
+    "EVERYTHING serves a concrete GOAL (given in the context): a target number of "
+    "views and comments. Never plan aimlessly 'into the void' — in the analysis, "
+    "state how today's set moves the numbers toward that goal, and pick formats "
+    "for maximum reply-pull and reach, not vanity.\n"
     "HARD RULES:\n"
     "- Stay strictly in the account's niche and persona voice (first person).\n"
     "- Be FLEXIBLE and VARIED: mix archetypes and audiences (some sharp one-line "
@@ -86,6 +90,19 @@ class StrategyCycle:
         self._agent_factory = agent_factory or (lambda sp: AIAgent(sp))
 
     # -- research -----------------------------------------------------------
+    def _goal_block(self) -> str:
+        gv = int(self._store.get_setting(S_GOAL_VIEWS, DEFAULTS[S_GOAL_VIEWS]) or 0)
+        gc = int(self._store.get_setting(S_GOAL_COMMENTS, DEFAULTS[S_GOAL_COMMENTS]) or 0)
+        prog = self._store.goal_progress(account_id=self._account_id, days=30)
+        return (
+            f"=== GOAL (non-negotiable) ===\n"
+            f"Target: {gv} views and {gc} comments. "
+            f"Current 30-day progress: {prog['views']} views, {prog['replies']} comments, "
+            f"{prog['likes']} likes. Every post today MUST be engineered to close this "
+            f"gap — maximise replies (the reach engine) and reach. If a post idea does "
+            f"not serve this goal, do not include it."
+        )
+
     def build_context(self, count: int, language: str) -> str:
         insights = self._store.content_insights(account_id=self._account_id)["text"]
         feed = self._store.feed_insights()["text"]
@@ -101,13 +118,15 @@ class StrategyCycle:
         format_ids = ", ".join(a["id"] for a in archetypes.list_archetypes())
 
         return "\n\n".join([
+            self._goal_block(),
             f"PERSONA (write in this first-person voice): {persona or '(not set)'}",
             f"=== YOUR OWN PERFORMANCE ===\n{insights}",
             f"=== NICHE / FEED TRENDS ===\n{feed}",
             f"=== PROVEN FORMATS (use these archetype ids) ===\n{formats}",
             f"Valid archetype ids: {format_ids}",
             f"RECENTLY USED — AVOID REPEATING THESE ANGLES: {avoid}",
-            f"TASK: design {count} varied posts for today in {language}. Return STRICT JSON only.",
+            f"TASK: design {count} varied posts for today in {language}, all serving the "
+            f"GOAL above. Return STRICT JSON only.",
         ])
 
     # -- plan ---------------------------------------------------------------
@@ -192,9 +211,12 @@ S_LANGUAGE = "strategy_language"
 S_ACCOUNT = "strategy_account"
 S_INTERVAL = "strategy_interval"
 S_LAST_DATE = "strategy_last_date"
+S_GOAL_VIEWS = "strategy_goal_views"
+S_GOAL_COMMENTS = "strategy_goal_comments"
 
 DEFAULTS = {S_ENABLED: "0", S_HOUR: "9", S_COUNT: "6",
-            S_LANGUAGE: "Ukrainian", S_ACCOUNT: "", S_INTERVAL: "90"}
+            S_LANGUAGE: "Ukrainian", S_ACCOUNT: "", S_INTERVAL: "90",
+            S_GOAL_VIEWS: "20000", S_GOAL_COMMENTS: "300"}
 
 
 def get_strategy_settings(store) -> dict:
@@ -205,6 +227,8 @@ def get_strategy_settings(store) -> dict:
         "language": store.get_setting(S_LANGUAGE, DEFAULTS[S_LANGUAGE]),
         "account_id": (int(store.get_setting(S_ACCOUNT) or 0) or None),
         "interval_minutes": int(store.get_setting(S_INTERVAL, DEFAULTS[S_INTERVAL]) or 90),
+        "goal_views": int(store.get_setting(S_GOAL_VIEWS, DEFAULTS[S_GOAL_VIEWS]) or 0),
+        "goal_comments": int(store.get_setting(S_GOAL_COMMENTS, DEFAULTS[S_GOAL_COMMENTS]) or 0),
         "last_date": store.get_setting(S_LAST_DATE, ""),
     }
 
@@ -245,8 +269,24 @@ class StrategyScheduler:
             if self._stop.wait(self._interval):
                 break
 
-    def tick(self) -> Optional[dict]:
-        """Run today's cycle if it's enabled, due, and hasn't run yet today."""
+    def _target_accounts(self, cfg: dict) -> List[Optional[int]]:
+        """Which accounts today's cycle runs for.
+
+        A specific configured account wins; otherwise every active account (so
+        the whole roster grows daily). Falls back to a single global run when
+        there are no accounts yet.
+        """
+        if cfg["account_id"]:
+            return [cfg["account_id"]]
+        active = [a["id"] for a in self._store.list_accounts()
+                  if a.get("status", "active") == "active"]
+        return active or [None]
+
+    def tick(self) -> Optional[list]:
+        """Run today's cycle if it's enabled, due, and hasn't run yet today.
+
+        Runs one cycle per target account (see :meth:`_target_accounts`).
+        """
         cfg = get_strategy_settings(self._store)
         if not cfg["enabled"]:
             return None
@@ -256,7 +296,14 @@ class StrategyScheduler:
             return None
         # Claim the day up-front so a concurrent/duplicate scheduler won't re-run.
         self._store.set_setting(S_LAST_DATE, today)
-        LOG.info("Running daily strategy cycle for %s", today)
-        cycle = self._cycle_factory(cfg["account_id"])
-        return cycle.run(count=cfg["count"], language=cfg["language"],
-                         interval_minutes=cfg["interval_minutes"], trigger="daily")
+        targets = self._target_accounts(cfg)
+        LOG.info("Running daily strategy cycle for %s across %d account(s)", today, len(targets))
+        runs = []
+        for acc in targets:
+            try:
+                cycle = self._cycle_factory(acc)
+                runs.append(cycle.run(count=cfg["count"], language=cfg["language"],
+                                      interval_minutes=cfg["interval_minutes"], trigger="daily"))
+            except Exception as exc:  # noqa: BLE001 - one account's failure mustn't stop the rest
+                LOG.warning("daily cycle failed for account %s: %s", acc, exc)
+        return runs

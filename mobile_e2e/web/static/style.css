@@ -491,6 +491,13 @@ label.auto input { width: auto; margin: 0; }
 .cyc-controls label { display: flex; flex-direction: column; gap: 4px; }
 .cyc-controls label.auto { flex-direction: row; align-items: center; gap: 8px; }
 .cyc-controls input, .cyc-controls select { margin-top: 0; }
+.cyc-goalbar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.goal-row { display: flex; flex-direction: column; gap: 4px; }
+.goal-lbl { font: 12px "JetBrains Mono", monospace; color: var(--dim); }
+.goal-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+.goal-fill { height: 100%; border-radius: 999px; transition: width .5s var(--ease); }
+.goal-fill.v { background: linear-gradient(90deg, #b14bff, #22d3c5); }
+.goal-fill.c { background: linear-gradient(90deg, #ff2e7e, #b14bff); }
 .cyc-runs { display: flex; flex-direction: column; gap: 12px; }
 .cyc-run { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; background: rgba(255,255,255,.02); border-left: 3px solid var(--accent); }
 .cyc-run.failed { border-left-color: var(--err); }

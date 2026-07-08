@@ -848,6 +848,20 @@ class Store:
         return "\n".join(lines)
 
     # -- daily strategy cycle -----------------------------------------------
+    def goal_progress(self, account_id: Optional[int] = None, days: int = 30) -> dict:
+        """Total views/replies/likes on published posts in a window (goal tracking)."""
+        cutoff = _cutoff(days * 24)
+        sql = ("SELECT COALESCE(SUM(views),0) v, COALESCE(SUM(replies),0) r, "
+               "COALESCE(SUM(likes),0) l FROM tasks "
+               "WHERE published_id != '' AND published_id IS NOT NULL AND updated_at >= ?")
+        params: list = [cutoff]
+        if account_id:
+            sql += " AND account_id = ?"
+            params.append(account_id)
+        with self._lock:
+            row = self._conn.execute(sql, params).fetchone()
+        return {"views": row["v"] or 0, "replies": row["r"] or 0, "likes": row["l"] or 0}
+
     def recent_angles(self, days: int = 7, account_id: Optional[int] = None) -> List[dict]:
         """Recently used (archetype, theme) pairs — so the planner avoids repeats."""
         cutoff = _cutoff(days * 24)

@@ -975,7 +975,10 @@ async function loadCycle(full) {
       $("#cyc-enabled").checked = !!cfg.enabled;
       $("#cyc-hour").value = cfg.hour; $("#cyc-count").value = cfg.count;
       $("#cyc-interval").value = cfg.interval_minutes; $("#cyc-lang").value = cfg.language || "Ukrainian";
+      if ($("#cyc-goalv")) $("#cyc-goalv").value = cfg.goal_views;
+      if ($("#cyc-goalc")) $("#cyc-goalc").value = cfg.goal_comments;
     }
+    renderGoalBar(cfg);
     const sel = $("#cyc-account");
     if (sel && !sel.children.length) {
       const accs = await api("/api/accounts");
@@ -1013,13 +1016,32 @@ function renderCycleRuns(runs) {
     wrap.append(card);
   });
 }
+function renderGoalBar(cfg) {
+  const wrap = $("#cyc-goalbar"); if (!wrap) return;
+  const p = cfg.progress || { views: 0, replies: 0 };
+  const gv = cfg.goal_views || 0, gc = cfg.goal_comments || 0;
+  const pctV = gv ? Math.min(100, Math.round(p.views / gv * 100)) : 0;
+  const pctC = gc ? Math.min(100, Math.round(p.replies / gc * 100)) : 0;
+  wrap.innerHTML = "";
+  const bar = (label, cur, goal, pct, cls) => {
+    const row = el("div", { class: "goal-row" });
+    row.append(el("div", { class: "goal-lbl", text: `${label}: ${cur.toLocaleString()} / ${goal.toLocaleString()} (${pct}%)` }));
+    const track = el("div", { class: "goal-track" });
+    const fill = el("div", { class: "goal-fill " + cls }); fill.style.width = pct + "%";
+    track.append(fill); row.append(track); return row;
+  };
+  wrap.append(bar(t("cyc.g.views"), p.views, gv, pctV, "v"));
+  wrap.append(bar(t("cyc.g.comments"), p.replies, gc, pctC, "c"));
+}
 const cycSave = $("#cyc-save");
 if (cycSave) cycSave.addEventListener("click", async () => {
-  await jpost("/api/strategy/settings", {
+  const cfg = await jpost("/api/strategy/settings", {
     enabled: $("#cyc-enabled").checked, hour: Number($("#cyc-hour").value),
     count: Number($("#cyc-count").value), interval_minutes: Number($("#cyc-interval").value),
     language: $("#cyc-lang").value.trim(), account_id: $("#cyc-account").value || "",
+    goal_views: Number($("#cyc-goalv").value), goal_comments: Number($("#cyc-goalc").value),
   });
+  renderGoalBar(cfg);
   toast(t("cyc.saved"), "success");
 });
 const cycRun = $("#cyc-run");

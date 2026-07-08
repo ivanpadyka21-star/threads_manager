@@ -162,6 +162,8 @@ const TRANSLATIONS = {
     "cyc.running": "Работает…", "cyc.started": "Цикл запущен — агент анализирует и пишет…",
     "cyc.done": "Цикл готов — черновики на одобрении в «Задачах»", "cyc.made": "постов: {n}",
     "cyc.st.planned": "Спланировано", "cyc.st.drafted": "Черновики готовы", "cyc.st.failed": "Ошибка",
+    "cyc.goalv": "Цель: просмотры", "cyc.goalc": "Цель: комменты",
+    "cyc.g.views": "Просмотры (30 дн)", "cyc.g.comments": "Комментарии (30 дн)",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -322,6 +324,8 @@ const TRANSLATIONS = {
     "cyc.running": "Running…", "cyc.started": "Cycle started — the agent is analysing and writing…",
     "cyc.done": "Cycle ready — drafts await approval in Tasks", "cyc.made": "posts: {n}",
     "cyc.st.planned": "Planned", "cyc.st.drafted": "Drafts ready", "cyc.st.failed": "Failed",
+    "cyc.goalv": "Goal: views", "cyc.goalc": "Goal: comments",
+    "cyc.g.views": "Views (30d)", "cyc.g.comments": "Comments (30d)",
   },
 };
 

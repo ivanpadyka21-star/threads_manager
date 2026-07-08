@@ -30,6 +30,7 @@ from mobile_e2e.web.scheduler import PostScheduler
 from mobile_e2e.web.strategy import (
     StrategyCycle, StrategyScheduler, get_strategy_settings,
     S_ENABLED, S_HOUR, S_COUNT, S_LANGUAGE, S_ACCOUNT, S_INTERVAL,
+    S_GOAL_VIEWS, S_GOAL_COMMENTS,
 )
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
@@ -350,7 +351,9 @@ def create_app(
     # -- daily strategy cycle -----------------------------------------------
     @app.get("/api/strategy/settings")
     def strategy_settings():
-        return jsonify(get_strategy_settings(db))
+        cfg = get_strategy_settings(db)
+        cfg["progress"] = db.goal_progress(account_id=cfg["account_id"], days=30)
+        return jsonify(cfg)
 
     @app.post("/api/strategy/settings")
     def save_strategy_settings():
@@ -364,6 +367,9 @@ def create_app(
             db.set_setting(S_LANGUAGE, str(data.get("language") or "Ukrainian"))
         if "account_id" in data:
             db.set_setting(S_ACCOUNT, str(data.get("account_id") or ""))
+        for key, name in ((S_GOAL_VIEWS, "goal_views"), (S_GOAL_COMMENTS, "goal_comments")):
+            if name in data and data.get(name) not in (None, ""):
+                db.set_setting(key, str(int(data[name])))
         return jsonify(get_strategy_settings(db))
 
     @app.get("/api/strategy/runs")
