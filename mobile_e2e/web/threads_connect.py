@@ -56,10 +56,13 @@ def main() -> None:
     from pythreads.threads import Threads
 
     # Only request scopes the app actually has, or Threads returns invalid_scope.
+    # threads_keyword_search powers the warm-up agent's live niche feed search —
+    # the app must have that permission/use-case enabled in the Meta dashboard,
+    # otherwise drop it here (search then falls back to manual samples).
     scopes_env = os.getenv(
         "E2E_THREADS_SCOPES",
         "threads_basic,threads_content_publish,threads_manage_replies,"
-        "threads_manage_insights",
+        "threads_manage_insights,threads_keyword_search",
     )
     scopes = [s.strip() for s in scopes_env.split(",") if s.strip()]
     config = Threads.load_configuration(scopes=scopes)

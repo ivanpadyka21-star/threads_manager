@@ -57,6 +57,8 @@ def _parse(raw: dict) -> List[dict]:
         out.append({
             "author": item.get("username") or "",
             "text": text,
+            # The media id lets the warm-up agent reply directly (reply_to_id).
+            "target_id": str(item.get("id") or ""),
             "likes": int(item.get("like_count") or 0),
             "replies": int(item.get("replies_count") or 0),
             "views": 0,  # public search does not expose others' view counts
