@@ -51,32 +51,47 @@ class WarmupAgent:
         self._account_id = account_id
         self._agent_factory = agent_factory or (lambda sp: AIAgent(sp))
 
+    def _own_authors(self) -> set:
+        """Our own account handles — never warm up (reply/like) our own posts."""
+        out = set()
+        for a in self._store.list_accounts():
+            h = (a.get("handle") or "").strip().lstrip("@").lower()
+            if h:
+                out.add(h)
+        return out
+
     # -- discovery ----------------------------------------------------------
     def _targets(self, keywords: List[str], limit: int) -> List[dict]:
-        """Fresh niche posts to engage. Prefers live search; falls back to the
-        competitor/feed samples we already hold (ranked by reply-pull)."""
-        found: List[dict] = []
+        """Fresh niche posts to engage. Prefers live search (real posts with a
+        media id → auto-reply); falls back to stored competitor samples. Never
+        targets our own accounts."""
+        own = self._own_authors()
+        live: List[dict] = []
         for kw in keywords:
             try:
-                found.extend(feed_source.search(kw, limit=8))
+                live.extend(feed_source.search(kw, limit=8))
             except Exception:  # noqa: BLE001 - unavailable → fall back below
                 continue
-        if not found:
-            # Fall back to stored niche samples, best reply-pull first.
-            ins = self._store.feed_insights()
-            found = [
-                {"text": p["text"], "author": p.get("author", ""), "url": "",
-                 "target_id": "", "replies": p.get("replies", 0), "views": p.get("views", 0)}
-                for p in (ins.get("by_replies") or ins.get("by_reach") or [])
-            ]
+        # Fall back to stored niche samples when live search is thin.
+        fallback = [
+            {"text": p["text"], "author": p.get("author", ""), "url": "",
+             "target_id": "", "replies": p.get("replies", 0), "views": p.get("views", 0)}
+            for p in (self._store.feed_insights().get("by_replies") or [])
+        ]
+
+        def _own(p):
+            return (p.get("author") or "").strip().lstrip("@").lower() in own
 
         def _rank(p):
             v = p.get("views") or 0
-            return (p.get("replies") or 0) / v if v else (p.get("replies") or 0)
+            # Live posts (have a media id → auto-reply) rank above stored ones.
+            boost = 1000 if (p.get("target_id") or p.get("id")) else 0
+            return boost + ((p.get("replies") or 0) / v if v else (p.get("replies") or 0))
 
-        # de-dupe by text, best first
         seen, uniq = set(), []
-        for p in sorted(found, key=_rank, reverse=True):
+        for p in sorted(live + fallback, key=_rank, reverse=True):
+            if _own(p):
+                continue  # never engage our own accounts
             key = (p.get("text") or "").strip()[:80]
             if not key or key in seen:
                 continue
