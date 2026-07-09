@@ -668,6 +668,19 @@ function renderWarmupManual(list) {
     wrap.append(row);
   });
 }
+const wuAdd = $("#wu-add");
+if (wuAdd) wuAdd.addEventListener("click", async () => {
+  const text = ($("#wu-paste").value || "").trim();
+  if (!text) { toast(t("wu.need_text"), "warn"); return; }
+  wuAdd.disabled = true;
+  try {
+    await jpost("/api/warmup/add-target", { text, account_id: $("#wu-account").value || null });
+    toast(t("wu.added"), "success");
+    $("#wu-paste").value = "";
+    setTimeout(loadWarmup, 3500);
+  } catch (err) { toast(String(err), "error", 6000); }
+  wuAdd.disabled = false;
+});
 const wuRun = $("#wu-run");
 if (wuRun) wuRun.addEventListener("click", async () => {
   wuRun.disabled = true; const lbl = wuRun.textContent; wuRun.textContent = t("wu.running");

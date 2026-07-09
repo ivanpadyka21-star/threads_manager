@@ -83,6 +83,15 @@ def test_warmup_run_ranks_by_reply_pull(store):
     assert "зраджували" in top_reply["target_text"]
 
 
+def test_warm_post_single_paste(store):
+    acc = store.add_account(name="A", persona="playful")
+    res = WarmupAgent(store, account_id=acc["id"], agent_factory=_factory).warm_post(
+        "Оце хочеться познайомитись з кимось особливим", author="veroniksaam")
+    assert res["reply"] == 1 and res["manual"] == 2
+    reply = [a for a in store.list_warmup_actions(account_id=acc["id"]) if a["kind"] == "reply"][0]
+    assert "?" in reply["draft"] and reply["target_author"] == "veroniksaam"
+
+
 def test_warmup_run_noop_without_targets(store):
     acc = store.add_account(name="A")
     res = WarmupAgent(store, account_id=acc["id"], agent_factory=_factory).run([], replies=3)

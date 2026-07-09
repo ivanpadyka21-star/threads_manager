@@ -486,6 +486,9 @@ label.auto input { width: auto; margin: 0; }
 .insight-label:first-child { margin-top: 0; }
 
 /* Warmup (engagement branch) */
+.wu-quick { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+.wu-quick textarea { margin: 0; flex: 1; }
+.wu-quick .mini { flex-shrink: 0; }
 .wu-stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .wu-stats .chip { cursor: default; }
 .wu-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }

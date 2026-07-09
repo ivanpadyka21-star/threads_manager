@@ -442,6 +442,29 @@ def create_app(
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202
 
+    @app.post("/api/warmup/add-target")
+    def warmup_add_target():
+        data = request.get_json(silent=True) or {}
+        text = str(data.get("text", "")).strip()
+        if not text:
+            return jsonify({"error": "text required"}), 400
+        account_id = data.get("account_id") or get_strategy_settings(db)["account_id"]
+        account_id = int(account_id) if account_id else None
+        persona = (db.get_account(account_id) or {}).get("persona", "") if account_id else ""
+
+        result: dict = {}
+        def _work():
+            try:
+                r = WarmupAgent(db, account_id=account_id).warm_post(
+                    text, author=str(data.get("author", "")), url=str(data.get("url", "")),
+                    target_id=str(data.get("target_id", "")), persona=persona)
+                result.update(r)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("warmup.error", str(exc)[:200], account_id, level="info")
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
     @app.post("/api/warmup/actions/<int:action_id>/approve")
     def warmup_approve(action_id: int):
         action = db.get_warmup_action(action_id)

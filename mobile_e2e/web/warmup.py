@@ -146,6 +146,33 @@ class WarmupAgent:
         return {"targets": len(targets), "replies": drafted, "manual": manual,
                 "handed_to_strategist": handed}
 
+    def warm_post(self, text: str, *, author: str = "", url: str = "",
+                  target_id: str = "", persona: str = "") -> dict:
+        """Warm up a SINGLE pasted post (the hybrid path — the user sees the app
+        feed, the API can't). Drafts a hooky reply and queues like/follow. The
+        reply action is created even if drafting fails (rate limit) so she can
+        write it by hand."""
+        text = (text or "").strip()
+        if not text:
+            raise ValueError("post text is required")
+        persona = persona or (
+            (self._store.get_account(self._account_id) or {}).get("persona", "")
+            if self._account_id else "")
+        draft = self._draft_reply(text, persona)
+        created = {"reply": 0, "manual": 0}
+        if self._store.add_warmup_action(
+                account_id=self._account_id, kind="reply", target_author=author,
+                target_text=text, target_url=url, target_id=target_id, draft=draft):
+            created["reply"] = 1
+        for kind in ("like", "follow"):
+            if self._store.add_warmup_action(
+                    account_id=self._account_id, kind=kind, target_author=author,
+                    target_text=text, target_url=url, target_id=target_id):
+                created["manual"] += 1
+        # also feed it to the strategist
+        self._store.add_feed_sample(text, author=author, url=url, topic="warmup", source="warmup")
+        return {**created, "draft": draft}
+
     def _draft_reply(self, target_text: str, persona: str) -> str:
         prompt = (
             f"Persona (your voice): {persona or '(playful SMM creator, 18+ niche)'}\n\n"
