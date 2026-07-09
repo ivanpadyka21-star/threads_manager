@@ -25,7 +25,9 @@ import os
 from typing import List
 
 from mobile_e2e.ai.agent import AIAgent
-from mobile_e2e.ai.settings import AISettings, DEFAULT_OPENAI_MODEL
+from mobile_e2e.ai.settings import (
+    AISettings, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL, GEMINI_OPENAI_BASE,
+)
 from mobile_e2e.utils.logger import get_logger
 
 LOG = get_logger(__name__)
@@ -43,16 +45,32 @@ def has_openai() -> bool:
 
 
 def provider_settings(provider: str) -> AISettings:
-    """Build :class:`AISettings` for one provider using its own key/model."""
+    """Build :class:`AISettings` for one provider using its own key/model.
+
+    Every provider-specific field (base_url, model, models) is passed
+    explicitly so ambient ``E2E_AI_*`` env (which configures the *default*
+    provider — Gemini here) can't leak into the other provider's config, e.g.
+    Gemini model ids being sent to the OpenAI endpoint.
+    """
     if provider == "openai":
+        model = os.getenv("E2E_AI_OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
         return AISettings(
+            _env_file=None,
             provider="openai",
             api_key=os.getenv("OPENAI_API_KEY"),
-            model=os.getenv("E2E_AI_OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+            base_url="https://api.openai.com/v1",
+            model=model,
+            models=model,
         )
+    gmodel = os.getenv("E2E_AI_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    gmodels = gmodel if gmodel == "gemini-2.5-flash-lite" else f"{gmodel},gemini-2.5-flash-lite"
     return AISettings(
+        _env_file=None,
         provider="gemini",
         api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"),
+        base_url=GEMINI_OPENAI_BASE,
+        model=gmodel,
+        models=gmodels,
     )
 
 
