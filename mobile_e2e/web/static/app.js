@@ -737,6 +737,33 @@ function renderDropCard(d) {
     d.per_account.forEach(a => pa.append(el("span", { class: "pa-chip", text: `${a.account}: ${fmtNum(a.views)}👁 ${a.comments}💬` })));
     card.append(pa);
   }
+  // expandable per-post breakdown (успешно / нет)
+  if (d.posts && d.posts.length) {
+    const share = d.goal_views && d.posts.length ? d.goal_views / d.posts.length : null;
+    const okCount = d.posts.filter(p => share ? p.views >= share : p.views >= (d.avg_views || 0)).length;
+    const toggle = el("button", { class: "drop-toggle" },
+      el("span", { class: "dt-arrow", text: "▸" }),
+      el("span", { text: tf("drop.posts", { n: d.posts.length }) }),
+      el("span", { class: "dt-ok", text: `✅ ${okCount} · ⚠️ ${d.posts.length - okCount}` }));
+    const list = el("div", { class: "drop-posts hidden" });
+    d.posts.forEach(p => {
+      const ok = share ? p.views >= share : p.views >= (d.avg_views || 0);
+      list.append(el("div", { class: "dp " + (ok ? "ok" : "bad") },
+        el("span", { class: "dp-mark", text: ok ? "✅" : "⚠️" }),
+        el("span", { class: "dp-when", text: p.when || "" }),
+        el("span", { class: "dp-acc", text: p.account }),
+        el("span", { class: "dp-stat", text: `${fmtNum(p.views)}👁` }),
+        el("span", { class: "dp-stat", text: `${p.replies}💬` }),
+        el("span", { class: "dp-stat", text: `${p.likes}❤` }),
+        el("span", { class: "dp-rr", text: `${p.reply_rate}‰` }),
+        el("span", { class: "dp-text", title: p.text, text: p.text })));
+    });
+    toggle.addEventListener("click", () => {
+      list.classList.toggle("hidden");
+      toggle.querySelector(".dt-arrow").textContent = list.classList.contains("hidden") ? "▸" : "▾";
+    });
+    card.append(toggle, list);
+  }
   // verdict (strategist)
   if (d.verdict) {
     card.append(el("div", { class: "drop-verdict" },

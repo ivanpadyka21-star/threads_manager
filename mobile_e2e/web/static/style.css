@@ -542,6 +542,22 @@ label.auto input { width: auto; margin: 0; }
 .drop-verdict { margin-top: 16px; padding: 15px 17px; border-radius: var(--radius-sm); border: 1px solid rgba(177,75,255,.25); background: rgba(177,75,255,.05); }
 .dv-h { font: 700 11px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 7px; }
 .dv-t { font-size: 14px; line-height: 1.55; color: var(--text); white-space: pre-wrap; }
+.drop-toggle { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 16px; padding: 10px 12px; background: rgba(255,255,255,.03); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--dim); font: inherit; font-size: 13px; cursor: pointer; box-shadow: none; text-align: left; }
+.drop-toggle:hover { background: rgba(255,255,255,.06); transform: none; border-color: var(--border-2); }
+.dt-arrow { color: var(--accent); font-size: 11px; width: 12px; }
+.dt-ok { margin-left: auto; font-family: "JetBrains Mono", monospace; font-size: 12px; }
+.drop-posts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.drop-posts.hidden { display: none; }
+.dp { display: grid; grid-template-columns: 22px 42px 118px 62px 46px 46px 48px 1fr; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.02); font-size: 12.5px; }
+.dp.ok { border-left: 2px solid var(--ok); }
+.dp.bad { border-left: 2px solid var(--warn); }
+.dp-mark { text-align: center; }
+.dp-when { font: 11px "JetBrains Mono", monospace; color: var(--muted); }
+.dp-acc { font: 11px "JetBrains Mono", monospace; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-stat { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.dp-rr { font: 700 11.5px "JetBrains Mono", monospace; color: var(--accent-2); }
+.dp-text { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) { .dp { grid-template-columns: 22px 1fr 1fr 1fr; } .dp-when, .dp-text { display: none; } }
 .drop-acts { display: flex; gap: 8px; margin-top: 16px; }
 
 /* Deep statistics */

@@ -1110,10 +1110,12 @@ class Store:
             if not t:
                 continue
             v = t.get("views") or 0
+            rp = t.get("replies") or 0
             txt = re.sub(r"^\[published [^\]]*\]\s*", "", (t.get("result") or t.get("title") or "")).replace("\n", " ")
-            posts.append({"views": v, "replies": t.get("replies") or 0, "likes": t.get("likes") or 0,
+            posts.append({"views": v, "replies": rp, "likes": t.get("likes") or 0,
+                          "reply_rate": round(rp / v * 1000, 1) if v else 0.0,
                           "account": hands.get(t.get("account_id"), ""), "published": bool(t.get("published_id")),
-                          "text": txt[:80]})
+                          "when": (t.get("scheduled_for") or "")[11:16], "text": txt[:120]})
             a = per.setdefault(hands.get(t.get("account_id"), "?"), {"views": 0, "comments": 0, "posts": 0})
             a["views"] += v; a["comments"] += t.get("replies") or 0; a["posts"] += 1
         posts.sort(key=lambda p: p["views"], reverse=True)
