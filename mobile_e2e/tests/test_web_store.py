@@ -381,6 +381,25 @@ def test_task_result_stored(store):
     assert store.get_task(task["id"])["result"] == "generated draft"
 
 
+def test_drop_lifecycle_measure_and_detail(store):
+    acc = store.add_account(name="A", handle="@a")
+    t1 = store.add_task(account_id=acc["id"], title="p1")
+    store.set_task_published(t1["id"], "1"); store.set_task_metrics(t1["id"], views=2000, likes=5, replies=40)
+    t2 = store.add_task(account_id=acc["id"], title="p2")
+    store.set_task_published(t2["id"], "2"); store.set_task_metrics(t2["id"], views=1500, likes=3, replies=20)
+    drop = store.add_drop(label="Test drop", goal_views=3000, goal_comments=75,
+                          task_ids=[t1["id"], t2["id"]])
+    assert drop["status"] == "running"
+    d = store.drop_detail(drop["id"])
+    assert d["views"] == 3500 and d["comments"] == 60
+    assert d["pct_views"] == 117 and d["pct_comments"] == 80   # views hit, comments not
+    assert d["met"] is False                                   # both must be met
+    assert d["avg_views"] == 1750.0 and d["best"]["views"] == 2000
+    assert d["per_account"][0]["account"] == "@a"
+    store.update_drop(drop["id"], verdict="хорошо, но мало комментов")
+    assert store.get_drop(drop["id"])["verdict"].startswith("хорошо")
+
+
 def test_stats_full_aggregates_accounts_goals_top(store):
     warm = store.add_account(name="Warm", handle="@warm")
     cold = store.add_account(name="Cold", handle="@cold")

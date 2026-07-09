@@ -164,6 +164,20 @@ class Store:
                     key TEXT PRIMARY KEY,
                     value TEXT
                 );
+                CREATE TABLE IF NOT EXISTS drops (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    label TEXT DEFAULT '',
+                    goal_views INTEGER DEFAULT 0,
+                    goal_comments INTEGER DEFAULT 0,
+                    task_ids TEXT DEFAULT '[]',
+                    status TEXT DEFAULT 'running',
+                    views INTEGER DEFAULT 0,
+                    comments INTEGER DEFAULT 0,
+                    likes INTEGER DEFAULT 0,
+                    verdict TEXT DEFAULT '',
+                    measured_at TEXT
+                );
                 CREATE TABLE IF NOT EXISTS warmup_actions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     account_id INTEGER,
@@ -1026,6 +1040,98 @@ class Store:
             if r["status"] in out:
                 out[r["status"]] += r["c"]
         return out
+
+    # -- drops (campaigns with a goal + evaluation) -------------------------
+    def add_drop(self, *, label: str = "", goal_views: int = 0, goal_comments: int = 0,
+                 task_ids: Optional[List[int]] = None) -> dict:
+        import json as _json
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                """INSERT INTO drops (created_at, label, goal_views, goal_comments,
+                   task_ids, status) VALUES (?, ?, ?, ?, ?, 'running')""",
+                (_now(), label.strip(), int(goal_views), int(goal_comments),
+                 _json.dumps(task_ids or [])),
+            )
+            did = cur.lastrowid
+        self.log("drop.create", f"{label}: goal {goal_views}v/{goal_comments}c")
+        return self.get_drop(did)
+
+    def get_drop(self, drop_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM drops WHERE id = ?", (drop_id,)).fetchone()
+        return dict(row) if row else None
+
+    def list_drops(self, limit: int = 40) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM drops ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_drop(self, drop_id: int, **fields) -> Optional[dict]:
+        allowed = {"label", "goal_views", "goal_comments", "task_ids", "status",
+                   "views", "comments", "likes", "verdict", "measured_at"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if updates:
+            sets = ", ".join(f"{k} = ?" for k in updates)
+            with self._lock, self._conn:
+                self._conn.execute(f"UPDATE drops SET {sets} WHERE id = ?",
+                                   (*updates.values(), drop_id))
+        return self.get_drop(drop_id)
+
+    def measure_drop(self, drop_id: int) -> Optional[dict]:
+        """Recompute a drop's totals from its tasks' current metrics."""
+        import json as _json
+        drop = self.get_drop(drop_id)
+        if not drop:
+            return None
+        ids = _json.loads(drop.get("task_ids") or "[]")
+        v = c = l = 0
+        for i in ids:
+            t = self.get_task(i)
+            if t:
+                v += t.get("views") or 0
+                c += t.get("replies") or 0
+                l += t.get("likes") or 0
+        status = "measured" if drop["status"] == "running" else drop["status"]
+        return self.update_drop(drop_id, views=v, comments=c, likes=l,
+                                measured_at=_now(), status=status)
+
+    def drop_detail(self, drop_id: int) -> Optional[dict]:
+        """Full drop stats: per-post, per-account, and goal completion."""
+        import json as _json
+        drop = self.measure_drop(drop_id)
+        if not drop:
+            return None
+        ids = _json.loads(drop.get("task_ids") or "[]")
+        hands = {a["id"]: a["handle"] for a in self.list_accounts()}
+        posts, per = [], {}
+        for i in ids:
+            t = self.get_task(i)
+            if not t:
+                continue
+            v = t.get("views") or 0
+            txt = re.sub(r"^\[published [^\]]*\]\s*", "", (t.get("result") or t.get("title") or "")).replace("\n", " ")
+            posts.append({"views": v, "replies": t.get("replies") or 0, "likes": t.get("likes") or 0,
+                          "account": hands.get(t.get("account_id"), ""), "published": bool(t.get("published_id")),
+                          "text": txt[:80]})
+            a = per.setdefault(hands.get(t.get("account_id"), "?"), {"views": 0, "comments": 0, "posts": 0})
+            a["views"] += v; a["comments"] += t.get("replies") or 0; a["posts"] += 1
+        posts.sort(key=lambda p: p["views"], reverse=True)
+        gv, gc = drop["goal_views"], drop["goal_comments"]
+        pv = round(drop["views"] / gv * 100) if gv else None
+        pc = round(drop["comments"] / gc * 100) if gc else None
+        avg = round(drop["views"] / len(posts), 1) if posts else 0
+        rr = round(drop["comments"] / drop["views"] * 1000, 1) if drop["views"] else 0.0
+        return {
+            **drop,
+            "pct_views": pv, "pct_comments": pc,
+            "met": (gv and drop["views"] >= gv) and (gc and drop["comments"] >= gc),
+            "avg_views": avg, "reply_rate": rr,
+            "best": posts[0] if posts else None,
+            "per_account": [{"account": k, **v} for k, v in
+                            sorted(per.items(), key=lambda kv: kv[1]["views"], reverse=True)],
+            "posts": posts,
+        }
 
     # -- settings (key/value meta) ------------------------------------------
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:

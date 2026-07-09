@@ -247,6 +247,101 @@ DEFAULTS = {S_ENABLED: "0", S_HOUR: "9", S_COUNT: "6",
             S_NICHE: "стосунки, секс, зрада, побачення, пристрасть, близькість"}
 
 
+DROP_EVAL_SYSTEM = (
+    "You are the content strategist reviewing one 'drop' (a batch of posts with a "
+    "concrete goal of views and comments). You are given the goal, the actual "
+    "result, the per-account and per-post breakdown. Give a SHORT, sharp verdict "
+    "in the owner's language (Russian): (1) hit the goal or not, and by how much; "
+    "(2) what worked (which accounts/formats pulled), (3) what failed and WHY, "
+    "(4) 2-3 concrete fixes for the next drop. Be honest and specific, no fluff. "
+    "6-9 sentences max."
+)
+
+
+def create_and_run_drop(store, *, account_ids, goal_views, goal_comments, count=3,
+                        language="Ukrainian", max_chars=170, when="today",
+                        label="", interval_minutes=60):
+    """Create a drop: run the strategist for each account, tag the posts to the
+    drop, schedule them (staggered) and approve. Returns the drop record."""
+    from datetime import datetime, timedelta
+    from mobile_e2e.web.store import _TZ
+
+    now = datetime.now(_TZ).replace(tzinfo=None, second=0, microsecond=0)
+    if when == "tomorrow":
+        base = (now + timedelta(days=1)).replace(hour=9, minute=0)
+        end = (now + timedelta(days=1)).replace(hour=21, minute=0)
+    else:
+        base = now + timedelta(minutes=8)
+        end = now.replace(hour=22, minute=0)
+        if end <= base:
+            end = base + timedelta(hours=4)
+
+    runs, task_lists = [], {}
+    for acc in account_ids:
+        run = StrategyCycle(store, account_id=acc).run(
+            count=count, language=language, interval_minutes=interval_minutes,
+            trigger="drop", refresh=False, max_chars=max_chars)
+        runs.append(run)
+        if run.get("batch_id"):
+            task_lists[acc] = store.list_batch(run["batch_id"])
+
+    # global staggered slots, interleaved across accounts
+    n = sum(len(v) for v in task_lists.values())
+    slots = []
+    if n:
+        step = (end - base) / max(1, n - 1)
+        slots = [(base + step * i).isoformat(timespec="minutes") for i in range(n)]
+    order = []
+    for i in range(count):
+        for acc in account_ids:
+            if acc in task_lists and i < len(task_lists[acc]):
+                order.append(task_lists[acc][i])
+    task_ids = []
+    for t, when_iso in zip(order, slots):
+        store.update_task(t["id"], scheduled_for=when_iso)
+        task_ids.append(t["id"])
+    for acc in account_ids:
+        run = next((r for r in runs if r.get("account_id") == acc and r.get("batch_id")), None)
+        if run:
+            store.approve_batch(run["batch_id"])
+
+    lbl = label or f"Залив {now:%d.%m %H:%M}"
+    return store.add_drop(label=lbl, goal_views=goal_views,
+                          goal_comments=goal_comments, task_ids=task_ids)
+
+
+def evaluate_drop(store, drop_id: int, agent_factory=None) -> Optional[str]:
+    """Strategist evaluates a drop against its goal; stores + returns the verdict."""
+    import json as _json
+    detail = store.drop_detail(drop_id)
+    if not detail:
+        return None
+    lines = [
+        f"GOAL: {detail['goal_views']} views, {detail['goal_comments']} comments.",
+        f"RESULT: {detail['views']} views ({detail['pct_views']}%), "
+        f"{detail['comments']} comments ({detail['pct_comments']}%), "
+        f"{detail['likes']} likes, avg {detail['avg_views']} views/post, "
+        f"reply-rate {detail['reply_rate']}‰. GOAL {'MET' if detail['met'] else 'NOT met'}.",
+        "PER ACCOUNT:",
+    ]
+    for a in detail["per_account"]:
+        lines.append(f"  {a['account']}: {a['views']}v / {a['comments']}c over {a['posts']} posts")
+    lines.append("TOP POSTS:")
+    for p in detail["posts"][:5]:
+        lines.append(f"  {p['views']}v {p['replies']}c [{p['account']}] «{p['text']}»")
+    context = "\n".join(lines)
+
+    factory = agent_factory or (lambda sp: make_agent(sp, role="strategist"))
+    try:
+        verdict = factory(DROP_EVAL_SYSTEM).generate_response(context).strip()
+    except Exception as exc:  # noqa: BLE001
+        LOG.warning("drop eval failed: %s", exc)
+        return None
+    store.update_drop(drop_id, verdict=verdict, status="evaluated")
+    store.log("drop.evaluate", f"#{drop_id}", None)
+    return verdict
+
+
 def refresh_metrics(store, limit: int = 80) -> int:
     """Fetch fresh views/likes/replies for published posts (per-account creds).
 

@@ -30,6 +30,7 @@ from mobile_e2e.web.publish import publish_task
 from mobile_e2e.web.scheduler import PostScheduler
 from mobile_e2e.web.strategy import (
     StrategyCycle, StrategyScheduler, get_strategy_settings,
+    create_and_run_drop, evaluate_drop,
     S_ENABLED, S_HOUR, S_COUNT, S_LANGUAGE, S_ACCOUNT, S_INTERVAL,
     S_GOAL_VIEWS, S_GOAL_COMMENTS, S_NICHE,
 )
@@ -421,6 +422,62 @@ def create_app(
 
         # The cycle makes several LLM calls; run it off the request thread and
         # let the UI poll /api/strategy/runs for the new report.
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
+    # -- drops (campaigns with a goal + evaluation) -------------------------
+    @app.get("/api/drops")
+    def list_drops():
+        return jsonify([db.drop_detail(d["id"]) for d in db.list_drops()])
+
+    @app.get("/api/drops/<int:drop_id>")
+    def drop_detail(drop_id: int):
+        d = db.drop_detail(drop_id)
+        return (jsonify(d), 200) if d else (jsonify({"error": "not found"}), 404)
+
+    @app.post("/api/drops")
+    def create_drop():
+        data = request.get_json(silent=True) or {}
+        active = [a["id"] for a in db.list_accounts() if a.get("status", "active") == "active"]
+        account_ids = data.get("account_ids") or active
+        account_ids = [int(a) for a in account_ids]
+        gv = int(data.get("goal_views") or 0)
+        gc = int(data.get("goal_comments") or 0)
+        count = int(data.get("count") or 3)
+        language = str(data.get("language") or "Ukrainian")
+        max_chars = int(data.get("max_chars") or 170)
+        when = "tomorrow" if data.get("when") == "tomorrow" else "today"
+        label = str(data.get("label") or "")
+
+        def _work():
+            try:
+                create_and_run_drop(db, account_ids=account_ids, goal_views=gv,
+                                    goal_comments=gc, count=count, language=language,
+                                    max_chars=max_chars, when=when, label=label)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("run.error", f"drop: {exc}"[:200], None, level="error")
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
+    @app.post("/api/drops/<int:drop_id>/measure")
+    def measure_drop(drop_id: int):
+        # refresh live metrics first, then recompute the drop
+        try:
+            from mobile_e2e.web.strategy import refresh_metrics
+            refresh_metrics(db)
+        except Exception:  # noqa: BLE001
+            pass
+        d = db.drop_detail(drop_id)
+        return (jsonify(d), 200) if d else (jsonify({"error": "not found"}), 404)
+
+    @app.post("/api/drops/<int:drop_id>/evaluate")
+    def evaluate_drop_route(drop_id: int):
+        def _work():
+            try:
+                evaluate_drop(db, drop_id)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("ai.error", f"drop eval: {exc}"[:200], None, level="info")
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202
 

@@ -100,7 +100,7 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", drops: "nav.drops", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
@@ -108,6 +108,7 @@ function renderTab(name) {
   if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
   if (name === "studio") loadStudio();
   if (name === "warmup") loadWarmup();
+  if (name === "drops") loadDrops();
   if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
@@ -696,6 +697,92 @@ if (wuRun) wuRun.addEventListener("click", async () => {
       if (pending > 0 || ++tries > 30) { clearInterval(poll); wuRun.disabled = false; wuRun.textContent = lbl; }
     }, 3000);
   } catch (err) { toast(String(err), "error", 6000); wuRun.disabled = false; wuRun.textContent = lbl; }
+});
+
+// --- Drops (campaigns with a goal + evaluation) ----------------------------
+function miniGoal(cur, target, pct, label, cls) {
+  const p = pct == null ? 0 : Math.min(100, pct);
+  const row = el("div", { class: "dg-row" });
+  row.append(el("div", { class: "dg-top" },
+    el("span", { class: "dg-l", text: label }),
+    el("span", { class: "dg-v " + (pct >= 100 ? "hit" : ""), text: `${fmtNum(cur)} / ${fmtNum(target)} · ${pct == null ? "—" : pct + "%"}` })));
+  const track = el("div", { class: "dg-track" });
+  const fill = el("div", { class: "dg-fill " + cls }); fill.style.width = "0%";
+  track.append(fill); row.append(track);
+  setTimeout(() => { fill.style.width = p + "%"; }, 60);
+  return row;
+}
+function renderDropCard(d) {
+  const met = d.met;
+  const card = el("div", { class: "panel drop-card " + (d.status === "running" ? "running" : (met ? "met" : "notmet")) });
+  const status = d.status === "running" ? t("drop.st.running") : (met ? t("drop.st.met") : (d.pct_views != null ? t("drop.st.notmet") : t("drop.st.measured")));
+  card.append(el("div", { class: "drop-head" },
+    el("div", {}, el("div", { class: "drop-label", text: d.label || ("#" + d.id) }),
+      el("div", { class: "drop-when", text: (d.created_at || "").replace("T", " ").slice(0, 16) })),
+    el("span", { class: "drop-badge " + (met ? "met" : (d.status === "running" ? "run" : "notmet")), text: status })));
+  // goals
+  const goals = el("div", { class: "drop-goals" });
+  goals.append(miniGoal(d.views, d.goal_views, d.pct_views, t("col.views"), "v"));
+  goals.append(miniGoal(d.comments, d.goal_comments, d.pct_comments, t("col.replies"), "c"));
+  card.append(goals);
+  // interesting metrics
+  card.append(el("div", { class: "drop-metrics" },
+    el("span", { class: "dm", text: `⌀ ${d.avg_views} ${t("drop.per")}` }),
+    el("span", { class: "dm", text: `${d.reply_rate}‰ reply` }),
+    el("span", { class: "dm", text: `❤ ${fmtNum(d.likes)}` }),
+    el("span", { class: "dm", text: `${d.posts ? d.posts.length : 0} ${t("stats.posts")}` })));
+  // per-account
+  if (d.per_account && d.per_account.length) {
+    const pa = el("div", { class: "drop-pa" });
+    d.per_account.forEach(a => pa.append(el("span", { class: "pa-chip", text: `${a.account}: ${fmtNum(a.views)}👁 ${a.comments}💬` })));
+    card.append(pa);
+  }
+  // verdict (strategist)
+  if (d.verdict) {
+    card.append(el("div", { class: "drop-verdict" },
+      el("div", { class: "dv-h", text: "🧠 " + t("drop.verdict") }),
+      el("div", { class: "dv-t", text: d.verdict })));
+  }
+  // actions
+  const acts = el("div", { class: "drop-acts" },
+    el("button", { class: "mini ghost", text: t("drop.measure"), onclick: async () => {
+      await jpost("/api/drops/" + d.id + "/measure", {}); loadDrops(); } }),
+    el("button", { class: "mini", text: d.verdict ? t("drop.reeval") : t("drop.eval"), onclick: async (e) => {
+      e.target.disabled = true; e.target.textContent = t("drop.evaluating");
+      await jpost("/api/drops/" + d.id + "/evaluate", {});
+      let tries = 0; const poll = setInterval(async () => {
+        const fresh = await api("/api/drops/" + d.id);
+        if ((fresh.verdict && fresh.verdict !== d.verdict) || ++tries > 30) { clearInterval(poll); loadDrops(); }
+      }, 2500);
+    } }));
+  card.append(acts);
+  return card;
+}
+async function loadDrops() {
+  const wrap = $("#drops-list"); if (!wrap) return;
+  const rows = await api("/api/drops");
+  wrap.innerHTML = "";
+  if (!rows.length) { wrap.append(emptyState(t("drop.empty"), t("drop.empty.hint"), "🚀")); return; }
+  rows.filter(Boolean).forEach(d => wrap.append(renderDropCard(d)));
+}
+const dropRun = $("#drop-run");
+if (dropRun) dropRun.addEventListener("click", async () => {
+  dropRun.disabled = true; const lbl = dropRun.textContent; dropRun.textContent = t("drop.running");
+  try {
+    await jpost("/api/drops", {
+      goal_views: Number($("#drop-gv").value) || 0,
+      goal_comments: Number($("#drop-gc").value) || 0,
+      count: Number($("#drop-count").value) || 3,
+      when: $("#drop-when").value,
+      max_chars: $("#drop-short").checked ? 170 : 480,
+    });
+    toast(t("drop.started"), "success");
+    let tries = 0; const before = (await api("/api/drops")).length;
+    const poll = setInterval(async () => {
+      const rows = await api("/api/drops");
+      if (rows.length > before || ++tries > 40) { clearInterval(poll); loadDrops(); dropRun.disabled = false; dropRun.textContent = lbl; }
+    }, 3000);
+  } catch (err) { toast(String(err), "error", 6000); dropRun.disabled = false; dropRun.textContent = lbl; }
 });
 
 // --- Studio (AI planner + editable post cards + saved prompts) -------------

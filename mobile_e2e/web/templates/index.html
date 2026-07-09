@@ -23,6 +23,7 @@
         <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
         <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
         <button class="nav-item" data-tab="warmup"><span>🔥</span> <em data-i18n="nav.warmup">Прогрев</em></button>
+        <button class="nav-item" data-tab="drops"><span>🚀</span> <em data-i18n="nav.drops">Заливы</em></button>
         <button class="nav-item" data-tab="calendar"><span>▦</span> <em data-i18n="nav.calendar">Календарь</em></button>
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
@@ -279,6 +280,28 @@
           <div class="panel-head" id="cal-controls"></div>
           <div id="calendar"></div>
         </div>
+      </section>
+
+      <!-- Drops (campaigns) -->
+      <section class="tab" id="tab-drops">
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="drop.new">🚀 Новый залив</h2></div>
+          <div class="hint" data-i18n="drop.hint" style="margin-bottom:12px">Ставишь цель — стратег пишет посты на все аккаунты, разносит по времени. После залива даёт оценку: добили или нет и что улучшить.</div>
+          <div class="drop-form">
+            <label><span data-i18n="drop.gv">Цель: просмотры</span><input type="number" id="drop-gv" value="3000" min="0" step="500"></label>
+            <label><span data-i18n="drop.gc">Цель: комменты</span><input type="number" id="drop-gc" value="75" min="0" step="5"></label>
+            <label><span data-i18n="drop.count">Постов/аккаунт</span><input type="number" id="drop-count" value="3" min="1" max="6"></label>
+            <label><span data-i18n="drop.when">Когда</span>
+              <select id="drop-when">
+                <option value="today" data-i18n="drop.today">Сегодня</option>
+                <option value="tomorrow" data-i18n="drop.tomorrow">Завтра</option>
+              </select>
+            </label>
+            <label class="auto"><input type="checkbox" id="drop-short" checked> <span data-i18n="drop.short">Короткие</span></label>
+            <button id="drop-run" data-i18n="drop.run">Запустить залив</button>
+          </div>
+        </div>
+        <div id="drops-list" class="drops-list"></div>
       </section>
 
       <!-- Warmup (engagement branch) -->
