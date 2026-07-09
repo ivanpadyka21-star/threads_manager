@@ -31,7 +31,8 @@ class FeedSearchUnavailable(Exception):
 _SEARCH_FIELDS = "id,text,username,permalink,like_count,replies_count,reposts_count"
 
 
-async def _search_async(keyword: str, limit: int, credentials_file: str) -> dict:
+async def _search_async(keyword: str, limit: int, credentials_file: str,
+                        search_type: str = "TOP") -> dict:
     from pythreads.api import API
     from pythreads.credentials import Credentials
     from pythreads.threads import Threads
@@ -41,7 +42,7 @@ async def _search_async(keyword: str, limit: int, credentials_file: str) -> dict
     async with API(credentials=credentials) as api:
         url = Threads.build_graph_api_url(
             "keyword_search",
-            {"q": keyword, "search_type": "TOP", "fields": _SEARCH_FIELDS,
+            {"q": keyword, "search_type": search_type, "fields": _SEARCH_FIELDS,
              "limit": str(limit)},
             api._access_token(),
         )
@@ -69,8 +70,12 @@ def _parse(raw: dict) -> List[dict]:
 
 
 def search(keyword: str, limit: int = 15,
-           credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> List[dict]:
+           credentials_file: str = DEFAULT_CREDENTIALS_FILE,
+           search_type: str = "RECENT") -> List[dict]:
     """Return public posts matching ``keyword`` (best-effort).
+
+    ``search_type`` RECENT returns the freshest matches (better for warm-up),
+    TOP returns the highest-performing. Falls back RECENT→TOP if empty.
 
     Raises:
         ThreadsNotConfigured: if the Threads integration is not set up.
@@ -80,13 +85,22 @@ def search(keyword: str, limit: int = 15,
     if not keyword:
         raise ValueError("Search keyword must not be empty.")
     _ensure_ready(credentials_file)
+
+    def _run(st):
+        raw = asyncio.run(_search_async(keyword, limit, credentials_file, search_type=st))
+        if isinstance(raw, dict) and raw.get("error"):
+            raise FeedSearchUnavailable(str(raw["error"].get("message", raw["error"])))
+        return _parse(raw)
+
     try:
-        raw = asyncio.run(_search_async(keyword, limit, credentials_file))
+        results = _run(search_type)
+        if not results and search_type != "TOP":
+            results = _run("TOP")  # widen if RECENT was empty
+        return results
+    except FeedSearchUnavailable:
+        raise
     except Exception as exc:  # noqa: BLE001 - normalise into a clear signal
         raise FeedSearchUnavailable(
             "Live keyword search is unavailable for this token "
             f"(needs the threads_keyword_search permission): {str(exc)[:200]}"
         ) from exc
-    if isinstance(raw, dict) and raw.get("error"):
-        raise FeedSearchUnavailable(str(raw["error"].get("message", raw["error"])))
-    return _parse(raw)
