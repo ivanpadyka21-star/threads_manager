@@ -24,6 +24,7 @@
         <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
         <button class="nav-item" data-tab="warmup"><span>🔥</span> <em data-i18n="nav.warmup">Прогрев</em></button>
         <button class="nav-item" data-tab="drops"><span>🚀</span> <em data-i18n="nav.drops">Заливы</em></button>
+        <button class="nav-item" data-tab="daily"><span>📅</span> <em data-i18n="nav.daily">Подсчёт дня</em></button>
         <button class="nav-item" data-tab="calendar"><span>▦</span> <em data-i18n="nav.calendar">Календарь</em></button>
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
@@ -280,6 +281,15 @@
           <div class="panel-head" id="cal-controls"></div>
           <div id="calendar"></div>
         </div>
+      </section>
+
+      <!-- Daily close-out -->
+      <section class="tab" id="tab-daily">
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="daily.title">📅 Подсчёт дня</h2></div>
+          <div class="hint" data-i18n="daily.hint">Каждый день закрывается в 23:59. Полный разбор: сколько вышло, что набрали, какие заливы, лучший пост, по каждому аккаунту.</div>
+        </div>
+        <div id="daily-list" class="daily-list"></div>
       </section>
 
       <!-- Drops (campaigns) -->

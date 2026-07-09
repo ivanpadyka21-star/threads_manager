@@ -1358,6 +1358,64 @@ class Store:
                      "target_comments": int(self.get_setting("drop_goal_comments") or 0)},
         }
 
+    def daily_reports(self, days: int = 14) -> List[dict]:
+        """Per-day close-out: posts published that day and their metrics, per
+        account, best post, drops created that day, and warm-up actions.
+
+        Each day ends at 23:59 — today is shown as in-progress."""
+        import json as _json
+
+        def _clean(txt: str) -> str:
+            return re.sub(r"^\[published [^\]]*\]\s*", "", (txt or "")).replace("\n", " ")
+
+        pub = self.published_tasks(limit=1000)
+        hands = {a["id"]: a["handle"] for a in self.list_accounts()}
+        by_day: Dict[str, dict] = {}
+        for t in pub:
+            day = (t.get("updated_at") or "")[:10]
+            if not day:
+                continue
+            d = by_day.setdefault(day, {"views": 0, "comments": 0, "likes": 0, "posts": 0, "per": {}, "best": None})
+            v = t.get("views") or 0
+            d["views"] += v; d["comments"] += t.get("replies") or 0
+            d["likes"] += t.get("likes") or 0; d["posts"] += 1
+            h = hands.get(t.get("account_id"), "?")
+            pa = d["per"].setdefault(h, {"views": 0, "comments": 0, "posts": 0})
+            pa["views"] += v; pa["comments"] += t.get("replies") or 0; pa["posts"] += 1
+            if not d["best"] or v > d["best"]["views"]:
+                d["best"] = {"views": v, "replies": t.get("replies") or 0, "account": h,
+                             "text": _clean(t.get("result") or t.get("title"))[:80]}
+
+        drops_by_day: Dict[str, list] = {}
+        for dr in self.list_drops():
+            day = (dr.get("created_at") or "")[:10]
+            met = bool(dr["goal_views"] and dr["views"] >= dr["goal_views"]
+                       and dr["goal_comments"] and dr["comments"] >= dr["goal_comments"])
+            drops_by_day.setdefault(day, []).append({
+                "label": dr["label"], "goal_views": dr["goal_views"], "goal_comments": dr["goal_comments"],
+                "views": dr["views"], "comments": dr["comments"], "met": met})
+
+        warm_by_day: Dict[str, int] = {}
+        for w in self.list_warmup_actions(limit=1000):
+            day = (w.get("created_at") or "")[:10]
+            warm_by_day[day] = warm_by_day.get(day, 0) + 1
+
+        today = datetime.now(_TZ).date().isoformat()
+        all_days = sorted(set(list(by_day) + list(drops_by_day)), reverse=True)[:days]
+        out = []
+        for day in all_days:
+            d = by_day.get(day, {"views": 0, "comments": 0, "likes": 0, "posts": 0, "per": {}, "best": None})
+            rr = round(d["comments"] / d["views"] * 1000, 1) if d["views"] else 0.0
+            out.append({
+                "date": day, "is_today": day == today,
+                "views": d["views"], "comments": d["comments"], "likes": d["likes"],
+                "posts": d["posts"], "reply_rate": rr, "best": d["best"],
+                "per_account": [{"account": k, **v} for k, v in
+                                sorted(d["per"].items(), key=lambda kv: kv[1]["views"], reverse=True)],
+                "drops": drops_by_day.get(day, []), "warmup": warm_by_day.get(day, 0),
+            })
+        return out
+
     # -- analytics ----------------------------------------------------------
     def activity_daily(self, account_id: Optional[int] = None, days: int = 14) -> List[dict]:
         """Daily activity buckets for the last ``days`` (for charts/sparklines).

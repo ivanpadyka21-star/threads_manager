@@ -507,6 +507,36 @@ label.auto input { width: auto; margin: 0; }
 .wu-manual-text { flex: 1; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wu-actions .mini, .wu-manual-row .mini { flex-shrink: 0; }
 
+/* Daily close-out */
+.daily-list { display: flex; flex-direction: column; gap: 16px; }
+.day-card { padding: 24px; border-left: 3px solid var(--border-2); }
+.day-card.today { border-left-color: var(--accent); box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,.04), 0 0 0 1px rgba(177,75,255,.08); }
+.day-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.day-title { font-size: 18px; font-weight: 800; text-transform: capitalize; }
+.day-date { font: 12px "JetBrains Mono", monospace; color: var(--muted); margin-top: 3px; }
+.day-live { font: 700 11px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .5px; padding: 5px 11px; border-radius: 999px; color: var(--accent); border: 1px solid rgba(177,75,255,.4); background: rgba(177,75,255,.08); }
+.day-done { font: 700 11px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .5px; padding: 5px 11px; border-radius: 999px; color: var(--dim); border: 1px solid var(--border-2); }
+.day-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+@media (max-width: 620px) { .day-tiles { grid-template-columns: repeat(3, 1fr); } }
+.dt-tile { text-align: center; padding: 14px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: rgba(255,255,255,.02); }
+.dt-v { display: flex; align-items: baseline; justify-content: center; gap: 3px; }
+.dt-v b { font-size: 22px; font-weight: 850; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+.dt-u { font-size: 13px; color: var(--dim); font-weight: 700; }
+.dt-l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; margin-top: 5px; }
+.day-section-l { font: 700 11px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .5px; color: var(--dim); margin: 18px 0 10px; }
+.day-drops { display: flex; flex-direction: column; gap: 8px; }
+.day-drop { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.02); }
+.day-drop.met { border-left: 2px solid var(--ok); } .day-drop.notmet { border-left: 2px solid var(--warn); }
+.dd-badge { width: 18px; text-align: center; font-weight: 800; color: var(--accent); }
+.day-drop.met .dd-badge { color: var(--ok); }
+.dd-label { font-weight: 650; font-size: 13.5px; }
+.dd-res { margin-left: auto; font: 12px "JetBrains Mono", monospace; color: var(--dim); }
+.day-pa { display: flex; flex-wrap: wrap; gap: 8px; }
+.day-best { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid rgba(255,176,32,.25); background: rgba(255,176,32,.04); display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.db-h { font: 700 12px "JetBrains Mono", monospace; color: var(--warn); }
+.db-m { font: 12px "JetBrains Mono", monospace; color: var(--dim); }
+.db-t { font-size: 13.5px; color: var(--text); flex: 1; min-width: 200px; }
+
 /* Drops (campaigns) */
 .drop-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
 .drop-form label { display: flex; flex-direction: column; gap: 5px; }

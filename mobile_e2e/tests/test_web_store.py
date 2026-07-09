@@ -381,6 +381,22 @@ def test_task_result_stored(store):
     assert store.get_task(task["id"])["result"] == "generated draft"
 
 
+def test_daily_reports_aggregates_by_day(store):
+    acc = store.add_account(name="A", handle="@a")
+    t1 = store.add_task(account_id=acc["id"], title="x")
+    store.set_task_published(t1["id"], "1"); store.set_task_metrics(t1["id"], views=800, likes=4, replies=12)
+    t2 = store.add_task(account_id=acc["id"], title="y")
+    store.set_task_published(t2["id"], "2"); store.set_task_metrics(t2["id"], views=200, likes=1, replies=3)
+    store.add_drop(label="D", goal_views=1000, goal_comments=15, task_ids=[t1["id"], t2["id"]])
+    rows = store.daily_reports(days=14)
+    assert rows and rows[0]["is_today"] is True
+    today = rows[0]
+    assert today["views"] == 1000 and today["comments"] == 15 and today["posts"] == 2
+    assert today["best"]["views"] == 800
+    assert today["per_account"][0]["account"] == "@a"
+    assert today["drops"] and today["drops"][0]["label"] == "D"
+
+
 def test_drop_lifecycle_measure_and_detail(store):
     acc = store.add_account(name="A", handle="@a")
     t1 = store.add_task(account_id=acc["id"], title="p1")

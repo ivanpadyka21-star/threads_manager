@@ -138,6 +138,10 @@ def create_app(
         return jsonify(db.stats_full(
             goal_views=cfg["goal_views"], goal_comments=cfg["goal_comments"]))
 
+    @app.get("/api/daily")
+    def daily_reports():
+        return jsonify(db.daily_reports(days=int(request.args.get("days", 14))))
+
     @app.get("/api/audit")
     def audit():
         return jsonify(db.list_audit())

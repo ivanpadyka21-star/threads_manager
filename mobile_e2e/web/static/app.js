@@ -100,7 +100,7 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", drops: "nav.drops", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", drops: "nav.drops", daily: "nav.daily", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
@@ -109,6 +109,7 @@ function renderTab(name) {
   if (name === "studio") loadStudio();
   if (name === "warmup") loadWarmup();
   if (name === "drops") loadDrops();
+  if (name === "daily") loadDaily();
   if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
@@ -811,6 +812,62 @@ if (dropRun) dropRun.addEventListener("click", async () => {
     }, 3000);
   } catch (err) { toast(String(err), "error", 6000); dropRun.disabled = false; dropRun.textContent = lbl; }
 });
+
+// --- Daily close-out -------------------------------------------------------
+function dayHeading(dateStr) {
+  const d = new Date(dateStr + "T12:00:00");
+  const today = new Date(), yst = new Date(); yst.setDate(today.getDate() - 1);
+  const same = (a, b) => a.toDateString() === b.toDateString();
+  if (same(d, today)) return t("day.today");
+  if (same(d, yst)) return t("day.yesterday");
+  return d.toLocaleDateString(window.I18N.lang, { weekday: "long", day: "numeric", month: "long" });
+}
+function dayTile(value, label, unit, dec) {
+  const num = el("b", { text: "0" });
+  countUp(num, value, { dec: dec || 0 });
+  return el("div", { class: "dt-tile" }, el("div", { class: "dt-v" }, num, unit ? el("span", { class: "dt-u", text: unit }) : el("span")), el("div", { class: "dt-l", text: label }));
+}
+function renderDayCard(day) {
+  const card = el("div", { class: "panel day-card" + (day.is_today ? " today" : "") });
+  card.append(el("div", { class: "day-head" },
+    el("div", {}, el("div", { class: "day-title", text: dayHeading(day.date) }),
+      el("div", { class: "day-date", text: day.date })),
+    day.is_today ? el("span", { class: "day-live", text: t("daily.inprogress") }) : el("span", { class: "day-done", text: t("daily.closed") })));
+  card.append(el("div", { class: "day-tiles" },
+    dayTile(day.views, t("col.views")), dayTile(day.comments, t("col.replies")),
+    dayTile(day.likes, t("col.likes")), dayTile(day.posts, t("daily.posts")),
+    dayTile(day.reply_rate, t("stats.rr"), "‰", 1), dayTile(day.warmup, t("daily.warmup"))));
+  // drops of the day
+  if (day.drops && day.drops.length) {
+    const dr = el("div", { class: "day-drops" });
+    day.drops.forEach(d => dr.append(el("div", { class: "day-drop " + (d.met ? "met" : "notmet") },
+      el("span", { class: "dd-badge", text: d.met ? "✓" : "•" }),
+      el("span", { class: "dd-label", text: d.label }),
+      el("span", { class: "dd-res", text: `${fmtNum(d.views)}/${fmtNum(d.goal_views)}👁 · ${d.comments}/${d.goal_comments}💬` }))));
+    card.append(el("div", { class: "day-section-l", text: t("daily.drops") }), dr);
+  }
+  // per-account
+  if (day.per_account && day.per_account.length) {
+    const pa = el("div", { class: "day-pa" });
+    day.per_account.forEach(a => pa.append(el("span", { class: "pa-chip", text: `${a.account}: ${fmtNum(a.views)}👁 ${a.comments}💬 · ${a.posts}п` })));
+    card.append(el("div", { class: "day-section-l", text: t("daily.byacc") }), pa);
+  }
+  // best post
+  if (day.best) {
+    card.append(el("div", { class: "day-best" },
+      el("span", { class: "db-h", text: "★ " + t("daily.best") }),
+      el("span", { class: "db-m", text: `${fmtNum(day.best.views)}👁 ${day.best.replies}💬 ${day.best.account}` }),
+      el("span", { class: "db-t", text: day.best.text })));
+  }
+  return card;
+}
+async function loadDaily() {
+  const wrap = $("#daily-list"); if (!wrap) return;
+  const rows = await api("/api/daily");
+  wrap.innerHTML = "";
+  if (!rows.length) { wrap.append(emptyState(t("daily.empty"), t("daily.empty.hint"), "📅")); return; }
+  rows.forEach(d => wrap.append(renderDayCard(d)));
+}
 
 // --- Studio (AI planner + editable post cards + saved prompts) -------------
 async function loadStudio() {
