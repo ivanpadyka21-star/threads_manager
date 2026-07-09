@@ -131,6 +131,12 @@ def create_app(
     def account_stats():
         return jsonify(db.per_account_stats())
 
+    @app.get("/api/stats/full")
+    def stats_full():
+        cfg = get_strategy_settings(db)
+        return jsonify(db.stats_full(
+            goal_views=cfg["goal_views"], goal_comments=cfg["goal_comments"]))
+
     @app.get("/api/audit")
     def audit():
         return jsonify(db.list_audit())

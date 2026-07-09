@@ -180,6 +180,7 @@ loadNotifications(); setInterval(loadNotifications, 5000);
 
 // --- dashboard -------------------------------------------------------------
 async function loadDashboard() {
+  loadDashGoals();
   const [stats, analytics, trend, reminders] = await Promise.all([
     api("/api/stats"), api("/api/analytics?hours=24"),
     api("/api/analytics/trend?days=30"), api("/api/reminders"),
@@ -902,16 +903,146 @@ function showTaskModal(tk) {
 }
 
 // --- statistics ------------------------------------------------------------
+// --- deep statistics -------------------------------------------------------
+const STAT_COLORS = ["#ff2e7e", "#b14bff", "#22d3c5", "#3b82f6", "#ffb020"];
+let statsData = null;
+function fmtNum(v) { return Math.round(v).toLocaleString("ru-RU"); }
+function countUp(node, target, { dur = 950, dec = 0 } = {}) {
+  const start = performance.now();
+  const fmt = v => dec ? v.toFixed(dec) : fmtNum(v);
+  (function tick(now) {
+    const p = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - p, 3);
+    node.textContent = fmt(target * e);
+    if (p < 1) requestAnimationFrame(tick); else node.textContent = fmt(target);
+  })(start);
+}
+function progressRing(pct, { size = 118, stroke = 11, c1 = "#b14bff", c2 = "#22d3c5" } = {}) {
+  pct = Math.max(0, Math.min(100, pct));
+  const r = (size - stroke) / 2, circ = 2 * Math.PI * r, off = circ * (1 - pct / 100);
+  const gid = "rg" + Math.random().toString(36).slice(2, 7);
+  const s = svg("svg", { viewBox: `0 0 ${size} ${size}`, width: size, height: size, class: "ring" });
+  const defs = svg("defs", {}), g = svg("linearGradient", { id: gid, x1: 0, y1: 0, x2: 1, y2: 1 });
+  g.append(svg("stop", { offset: "0%", "stop-color": c1 }), svg("stop", { offset: "100%", "stop-color": c2 }));
+  defs.append(g); s.append(defs);
+  s.append(svg("circle", { cx: size / 2, cy: size / 2, r, fill: "none", stroke: "rgba(255,255,255,.08)", "stroke-width": stroke }));
+  const fg = svg("circle", { cx: size / 2, cy: size / 2, r, fill: "none", stroke: `url(#${gid})`, "stroke-width": stroke, "stroke-linecap": "round", "stroke-dasharray": circ.toFixed(1), "stroke-dashoffset": circ.toFixed(1), transform: `rotate(-90 ${size / 2} ${size / 2})` });
+  fg.style.transition = "stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)";
+  s.append(fg);
+  setTimeout(() => fg.setAttribute("stroke-dashoffset", off.toFixed(1)), 70);
+  return s;
+}
+function goalCard({ title, cur, target, unit, sub, c1, c2 }) {
+  const pct = target ? Math.round(cur / target * 100) : 0;
+  const card = el("div", { class: "panel goal-card" });
+  const pctNum = el("b", { text: "0" });
+  const ringWrap = el("div", { class: "ring-wrap" }, progressRing(pct, { c1, c2 }),
+    el("div", { class: "ring-pct" }, pctNum, el("span", { text: "%" })));
+  const curNum = el("b", { text: "0" });
+  const info = el("div", { class: "goal-info" },
+    el("div", { class: "goal-title", text: title }),
+    el("div", { class: "goal-big" }, curNum, el("span", { class: "goal-of", text: " / " + fmtNum(target) + (unit ? " " + unit : "") })),
+    sub ? el("div", { class: "goal-sub", text: sub }) : el("span"));
+  card.append(ringWrap, info);
+  countUp(pctNum, pct); countUp(curNum, cur);
+  return card;
+}
+function statTile({ label, value, unit, sub, accent, dec }) {
+  const num = el("span", { class: "m-num", text: "0" });
+  const card = el("div", { class: "metric" + (accent ? " accent" : "") },
+    el("div", { class: "m-k", text: label }),
+    el("div", { class: "m-v" }, num, unit ? el("span", { class: "m-unit", text: unit }) : el("span")),
+    el("div", { class: "m-sub", text: sub || "" }));
+  countUp(num, value, { dec: dec || 0 });
+  return card;
+}
+function accountStatCard(a, color) {
+  const card = el("div", { class: "panel acct-card" });
+  card.style.setProperty("--ac", color);
+  card.append(el("div", { class: "acct-head" },
+    el("span", { class: "acct-h", text: a.handle || a.name }),
+    el("span", { class: "acct-state " + a.state, text: t("state." + a.state) })));
+  const m = (v, l, dec) => { const n = el("b", { text: "0" }); countUp(n, v, { dec: dec || 0 }); return el("div", { class: "am" }, n, el("span", { class: "am-l", text: l })); };
+  card.append(el("div", { class: "acct-metrics" },
+    m(a.views, t("col.views")), m(a.replies, t("col.replies")),
+    m(a.reply_rate, "‰", 1), m(a.likes, t("col.likes")), m(a.published, t("stats.posts"))));
+  if (a.spark && a.spark.length) card.append(el("div", { class: "acct-spark" }, barChart(a.spark, 320, 42)));
+  if (a.best) card.append(el("div", { class: "acct-best", title: a.best, text: "★ " + a.best }));
+  return card;
+}
+function accMap() { return Object.fromEntries((statsData?.accounts || []).map(a => [a.id, a.handle])); }
+function renderStatsTop() {
+  const wrap = $("#stats-top"); if (!wrap || !statsData) return;
+  const by = ($("#stats-top-by") && $("#stats-top-by").value) || "views";
+  const rows = [...statsData.top].sort((x, y) => (y[by] || 0) - (x[by] || 0));
+  const map = accMap();
+  wrap.innerHTML = "";
+  if (!rows.length) { wrap.append(emptyState(t("top.empty"), t("top.empty.hint"), "🏆")); return; }
+  const list = el("ol", { class: "top-list" });
+  rows.forEach(r => list.append(el("li", { class: "top-item" },
+    el("span", { class: "top-metric" }, el("b", { text: fmtNum(r.views) }), el("span", { class: "tm-l", text: "👁" })),
+    el("span", { class: "top-metric" }, el("b", { text: String(r.replies) }), el("span", { class: "tm-l", text: "💬" })),
+    el("span", { class: "top-rr", text: r.reply_rate + "‰" }),
+    el("span", { class: "top-acc", text: map[r.account_id] || "" }),
+    el("span", { class: "top-text", title: r.text, text: r.text }))));
+  wrap.append(list);
+}
 async function loadStats() {
-  const rows = await api("/api/stats/accounts");
-  const wrap = $("#stats-table");
-  if (!rows.length) { wrap.innerHTML = `<div class="empty">${t("empty.data")}</div>`; return; }
-  const table = el("table");
-  table.append(headRow(["col.account", "col.total", "col.pending", "col.approved", "col.done", "col.rejected", "col.today"]));
-  rows.forEach(r => table.append(el("tr", {}, td(r.name), td(String(r.total_tasks)),
-    td(String(r.counts.pending || 0)), td(String(r.counts.approved || 0)), td(String(r.counts.done || 0)),
-    td(String(r.counts.rejected || 0)), tdLimit(r.used_today, r.daily_limit))));
-  wrap.innerHTML = ""; wrap.append(table);
+  const d = await api("/api/stats/full"); statsData = d;
+  // goals
+  const g = $("#stats-goals"); g.innerHTML = "";
+  g.append(
+    goalCard({ title: t("goal.main.views"), cur: d.goal.views, target: d.goal.target_views, unit: t("unit.views"), sub: t("goal.window"), c1: "#b14bff", c2: "#22d3c5" }),
+    goalCard({ title: t("goal.main.comments"), cur: d.goal.comments, target: d.goal.target_comments, unit: t("unit.comments"), sub: t("goal.window"), c1: "#ff2e7e", c2: "#b14bff" }),
+  );
+  if (d.drop && d.drop.posts) {
+    g.append(goalCard({ title: t("goal.drop"), cur: d.drop.views, target: d.drop.target_views || 1, unit: t("unit.views"), sub: `💬 ${d.drop.comments}/${d.drop.target_comments} · ${d.drop.posts} ${t("stats.posts")}`, c1: "#22d3c5", c2: "#3b82f6" }));
+  }
+  // overall
+  const o = $("#stats-overall"); o.innerHTML = "";
+  o.append(
+    statTile({ label: t("col.views"), value: d.overall.views, accent: true }),
+    statTile({ label: t("col.replies"), value: d.overall.replies }),
+    statTile({ label: t("col.likes"), value: d.overall.likes }),
+    statTile({ label: t("stats.rr"), value: d.overall.avg_reply_rate, unit: "‰", dec: 1 }),
+    statTile({ label: t("stats.published"), value: d.overall.published }),
+    statTile({ label: t("stats.accounts"), value: d.overall.accounts }),
+  );
+  // trend
+  const tr = $("#stats-trend"); tr.innerHTML = "";
+  const vals = d.trend.map(x => x.views);
+  if (vals.some(v => v > 0)) tr.append(areaChart(vals, { color: "#22d3c5", h: 150 }));
+  else tr.append(el("div", { class: "empty", text: t("stats.notrend") }));
+  // per-account
+  const ac = $("#stats-accounts"); ac.innerHTML = "";
+  d.accounts.forEach((a, i) => ac.append(accountStatCard(a, STAT_COLORS[i % STAT_COLORS.length])));
+  // top + legend
+  renderStatsTop();
+  renderStatsLegend(d.accounts);
+}
+function renderStatsLegend(accounts) {
+  const wrap = $("#stats-legend"); if (!wrap) return;
+  wrap.innerHTML = "";
+  const states = el("div", { class: "leg-row" },
+    el("span", { class: "leg-chip warm", text: t("state.warm") + " — " + t("legend.warm") }),
+    el("span", { class: "leg-chip warming", text: t("state.warming") + " — " + t("legend.warming") }),
+    el("span", { class: "leg-chip cold", text: t("state.cold") + " — " + t("legend.cold") }));
+  const metrics = el("div", { class: "leg-metrics", text: t("legend.metrics") });
+  wrap.append(states, metrics);
+}
+const statsTopBy = $("#stats-top-by");
+if (statsTopBy) statsTopBy.addEventListener("change", renderStatsTop);
+async function loadDashGoals() {
+  const g = $("#dash-goals"); if (!g) return;
+  try {
+    const d = await api("/api/stats/full");
+    g.innerHTML = "";
+    g.append(
+      goalCard({ title: t("goal.main.views"), cur: d.goal.views, target: d.goal.target_views, unit: t("unit.views"), sub: t("goal.window"), c1: "#b14bff", c2: "#22d3c5" }),
+      goalCard({ title: t("goal.main.comments"), cur: d.goal.comments, target: d.goal.target_comments, unit: t("unit.comments"), sub: t("goal.window"), c1: "#ff2e7e", c2: "#b14bff" }),
+    );
+    if (d.drop && d.drop.posts)
+      g.append(goalCard({ title: t("goal.drop"), cur: d.drop.views, target: d.drop.target_views || 1, unit: t("unit.views"), sub: `💬 ${d.drop.comments}/${d.drop.target_comments} · ${d.drop.posts} ${t("stats.posts")}`, c1: "#22d3c5", c2: "#3b82f6" }));
+  } catch (e) { g.innerHTML = ""; }
 }
 
 // --- audit (grouped by day) ------------------------------------------------

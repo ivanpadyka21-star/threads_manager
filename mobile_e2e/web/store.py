@@ -1174,6 +1174,82 @@ class Store:
             )
         return result
 
+    def stats_full(self, days: int = 30, goal_views: int = 20000,
+                   goal_comments: int = 300) -> dict:
+        """Everything the deep-stats department needs in one call: per-account
+        metrics, overall totals, top posts, a daily views trend, and goal
+        progress (main + today's drop)."""
+        import json as _json
+
+        def _clean(txt: str) -> str:
+            return re.sub(r"^\[published [^\]]*\]\s*", "", (txt or "")).replace("\n", " ")
+
+        pub = self.published_tasks(limit=500)
+        pub = [p for p in pub if (p.get("views") or 0) >= 0]
+        by_acc: Dict[int, dict] = {}
+        daily: Dict[str, int] = {}
+        for t in pub:
+            aid = t.get("account_id")
+            d = by_acc.setdefault(aid, {"views": 0, "likes": 0, "replies": 0, "posts": []})
+            d["views"] += t.get("views") or 0
+            d["likes"] += t.get("likes") or 0
+            d["replies"] += t.get("replies") or 0
+            d["posts"].append(t)
+            day = (t.get("updated_at") or "")[:10]
+            if day:
+                daily[day] = daily.get(day, 0) + (t.get("views") or 0)
+
+        accounts, tot = [], {"views": 0, "likes": 0, "replies": 0, "published": 0}
+        for a in self.list_accounts():
+            d = by_acc.get(a["id"], {"views": 0, "likes": 0, "replies": 0, "posts": []})
+            v, r = d["views"], d["replies"]
+            rr = round(r / v * 1000, 1) if v else 0.0
+            spark = [p.get("views") or 0 for p in
+                     sorted(d["posts"], key=lambda x: x.get("updated_at") or "")[-12:]]
+            best = max(d["posts"], key=lambda x: x.get("views") or 0, default=None)
+            accounts.append({
+                "id": a["id"], "name": a["name"], "handle": a["handle"],
+                "views": v, "likes": d["likes"], "replies": r, "reply_rate": rr,
+                "published": len(d["posts"]),
+                "state": "warm" if v >= 500 else ("warming" if v >= 50 else "cold"),
+                "spark": spark,
+                "best": _clean(best.get("result") or best.get("title"))[:60] if best else "",
+            })
+            tot["views"] += v; tot["likes"] += d["likes"]
+            tot["replies"] += r; tot["published"] += len(d["posts"])
+        accounts.sort(key=lambda x: x["views"], reverse=True)
+
+        today = datetime.now(_TZ).date()
+        trend = [{"date": (today - timedelta(days=i)).isoformat(),
+                  "views": daily.get((today - timedelta(days=i)).isoformat(), 0)}
+                 for i in range(13, -1, -1)]
+
+        top = [{"views": t.get("views") or 0, "likes": t.get("likes") or 0,
+                "replies": t.get("replies") or 0, "account_id": t.get("account_id"),
+                "reply_rate": round((t.get("replies") or 0) / (t.get("views") or 1) * 1000, 1),
+                "text": _clean(t.get("result") or t.get("title"))[:90]}
+               for t in sorted(pub, key=lambda x: x.get("views") or 0, reverse=True)[:8]]
+
+        drop_ids = _json.loads(self.get_setting("drop_task_ids") or "[]")
+        dv = dr = 0
+        for i in drop_ids:
+            tk = self.get_task(i)
+            if tk:
+                dv += tk.get("views") or 0
+                dr += tk.get("replies") or 0
+
+        return {
+            "overall": {**tot, "accounts": len(accounts),
+                        "avg_reply_rate": round(tot["replies"] / tot["views"] * 1000, 1)
+                        if tot["views"] else 0.0},
+            "accounts": accounts, "top": top, "trend": trend,
+            "goal": {"views": tot["views"], "comments": tot["replies"], "likes": tot["likes"],
+                     "target_views": goal_views, "target_comments": goal_comments},
+            "drop": {"views": dv, "comments": dr, "posts": len(drop_ids),
+                     "target_views": int(self.get_setting("drop_goal_views") or 0),
+                     "target_comments": int(self.get_setting("drop_goal_comments") or 0)},
+        }
+
     # -- analytics ----------------------------------------------------------
     def activity_daily(self, account_id: Optional[int] = None, days: int = 14) -> List[dict]:
         """Daily activity buckets for the last ``days`` (for charts/sparklines).

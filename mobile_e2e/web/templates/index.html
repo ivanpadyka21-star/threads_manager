@@ -61,6 +61,8 @@
 
       <!-- Dashboard -->
       <section class="tab active" id="tab-dashboard">
+        <p class="eyebrow-lbl" data-i18n="stats.goals">🎯 Цели, к которым идём</p>
+        <div id="dash-goals" class="dash-goals"></div>
         <div class="metrics" id="summary-cards"></div>
         <div class="charts-2">
           <div class="panel">
@@ -358,9 +360,35 @@
 
       <!-- Statistics -->
       <section class="tab" id="tab-stats">
+        <p class="eyebrow-lbl" data-i18n="stats.goals">🎯 Цели, к которым идём</p>
+        <div id="stats-goals" class="stats-goals"></div>
+
+        <p class="eyebrow-lbl" data-i18n="stats.overall">📊 Общие показатели (30 дней)</p>
+        <div id="stats-overall" class="metrics"></div>
+
         <div class="panel">
-          <div class="panel-head"><h2 data-i18n="stats.title">Статистика по аккаунтам</h2></div>
-          <div id="stats-table" class="table-wrap"></div>
+          <div class="panel-head"><h2 data-i18n="stats.trend">Просмотры по дням (14 дн)</h2></div>
+          <div id="stats-trend" class="stats-trend"></div>
+        </div>
+
+        <p class="eyebrow-lbl" data-i18n="stats.byacc">👤 По каждому аккаунту</p>
+        <div id="stats-accounts" class="stats-accts"></div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="stats.top">🏆 Топ постов</h2>
+            <select id="stats-top-by">
+              <option value="views" data-i18n="col.views">Просмотры</option>
+              <option value="replies" data-i18n="col.replies">Ответы</option>
+              <option value="reply_rate">Reply-rate</option>
+            </select>
+          </div>
+          <div id="stats-top"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="stats.legend">Легенда</h2></div>
+          <div id="stats-legend" class="stats-legend"></div>
         </div>
       </section>
 

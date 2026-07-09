@@ -381,6 +381,25 @@ def test_task_result_stored(store):
     assert store.get_task(task["id"])["result"] == "generated draft"
 
 
+def test_stats_full_aggregates_accounts_goals_top(store):
+    warm = store.add_account(name="Warm", handle="@warm")
+    cold = store.add_account(name="Cold", handle="@cold")
+    t1 = store.add_task(account_id=warm["id"], title="a")
+    store.set_task_published(t1["id"], "1"); store.set_task_metrics(t1["id"], views=1000, likes=10, replies=20)
+    t2 = store.add_task(account_id=cold["id"], title="b")
+    store.set_task_published(t2["id"], "2"); store.set_task_metrics(t2["id"], views=5, likes=0, replies=0)
+    d = store.stats_full(goal_views=20000, goal_comments=300)
+    assert d["overall"]["views"] == 1005 and d["overall"]["replies"] == 20
+    assert d["overall"]["published"] == 2 and d["overall"]["accounts"] == 2
+    # accounts sorted by views desc; warm first, tagged warm; cold tagged cold
+    assert d["accounts"][0]["handle"] == "@warm" and d["accounts"][0]["state"] == "warm"
+    assert any(a["state"] == "cold" for a in d["accounts"])
+    # goal + top present
+    assert d["goal"]["target_views"] == 20000 and d["goal"]["views"] == 1005
+    assert d["top"] and d["top"][0]["views"] == 1000 and d["top"][0]["reply_rate"] == 20.0
+    assert len(d["trend"]) == 14
+
+
 def test_analytics_overview_and_summary(store):
     acc = store.add_account(name="Alpha")
     store.add_task(account_id=acc["id"], title="x")
