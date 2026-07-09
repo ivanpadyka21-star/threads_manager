@@ -100,13 +100,14 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "accounts") loadAccounts();
   if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
   if (name === "studio") loadStudio();
+  if (name === "warmup") loadWarmup();
   if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
@@ -610,6 +611,78 @@ function renderStructure() {
     legend.append(item);
   }
 }
+
+// --- Warmup (engagement branch) -------------------------------------------
+async function loadWarmup() {
+  const sel = $("#wu-account");
+  if (sel && !sel.children.length) {
+    const accs = await api("/api/accounts");
+    sel.innerHTML = accs.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
+  }
+  const d = await api("/api/warmup/actions");
+  const st = d.stats || {};
+  $("#wu-stats").innerHTML =
+    `<span class="chip">💬 ${t("wu.st.replies")}: ${(st.reply && st.reply.pending) || 0}</span>` +
+    `<span class="chip">❤ ${t("wu.st.likes")}: ${(st.like && st.like.pending) || 0}</span>` +
+    `<span class="chip">➕ ${t("wu.st.follows")}: ${(st.follow && st.follow.pending) || 0}</span>` +
+    `<span class="chip good">✓ ${t("wu.st.done")}: ${st.done || 0}</span>`;
+  const actions = (d.actions || []).filter(a => a.status === "pending");
+  renderWarmupReplies(actions.filter(a => a.kind === "reply"));
+  renderWarmupManual(actions.filter(a => a.kind === "like" || a.kind === "follow"));
+}
+function warmupTargetLink(a) {
+  return a.target_url
+    ? el("a", { href: a.target_url, target: "_blank", class: "wu-link", text: "↗ пост" })
+    : el("span", { class: "wu-nolink", text: (a.target_author ? "@" + a.target_author : "") });
+}
+function renderWarmupReplies(list) {
+  const wrap = $("#wu-replies"); wrap.innerHTML = "";
+  if (!list.length) { wrap.append(emptyState(t("wu.empty.replies"), t("wu.empty.hint"), "💬")); return; }
+  list.forEach(a => {
+    const card = el("div", { class: "wu-card" });
+    card.append(el("div", { class: "wu-target", text: "→ " + (a.target_text || "").slice(0, 120) }));
+    const draft = el("textarea", { class: "wu-draft", rows: 3 }); draft.value = a.draft || "";
+    card.append(draft);
+    const row = el("div", { class: "wu-actions" }, warmupTargetLink(a),
+      el("button", { class: "mini", text: t("wu.publish"), onclick: async () => {
+        const r = await jpost("/api/warmup/actions/" + a.id + "/approve", { draft: draft.value });
+        if (r.published_id) toast(t("wu.published"), "success");
+        else if (r.manual) toast(t("wu.manual_hint"), "warn", 7000);
+        loadWarmup();
+      } }),
+      el("button", { class: "mini ghost", text: t("wu.skip"), onclick: async () => {
+        await jpost("/api/warmup/actions/" + a.id + "/skip", {}); loadWarmup(); } }));
+    card.append(row); wrap.append(card);
+  });
+}
+function renderWarmupManual(list) {
+  const wrap = $("#wu-manual"); wrap.innerHTML = "";
+  if (!list.length) { wrap.append(emptyState(t("wu.empty.manual"), t("wu.empty.hint"), "✅")); return; }
+  list.forEach(a => {
+    const row = el("div", { class: "wu-manual-row" },
+      el("span", { class: "wu-kind " + a.kind, text: a.kind === "like" ? "❤" : "➕" }),
+      el("span", { class: "wu-manual-text", text: (a.target_author ? "@" + a.target_author + " · " : "") + (a.target_text || "").slice(0, 70) }),
+      warmupTargetLink(a),
+      el("button", { class: "mini", text: "✓", title: t("wu.mark_done"), onclick: async () => {
+        await jpost("/api/warmup/actions/" + a.id + "/done", {}); loadWarmup(); } }));
+    wrap.append(row);
+  });
+}
+const wuRun = $("#wu-run");
+if (wuRun) wuRun.addEventListener("click", async () => {
+  wuRun.disabled = true; const lbl = wuRun.textContent; wuRun.textContent = t("wu.running");
+  try {
+    await jpost("/api/warmup/run", { account_id: $("#wu-account").value || null });
+    toast(t("wu.started"), "success");
+    let tries = 0;
+    const poll = setInterval(async () => {
+      await loadWarmup();
+      const d = await api("/api/warmup/actions");
+      const pending = (d.actions || []).filter(a => a.status === "pending").length;
+      if (pending > 0 || ++tries > 30) { clearInterval(poll); wuRun.disabled = false; wuRun.textContent = lbl; }
+    }, 3000);
+  } catch (err) { toast(String(err), "error", 6000); wuRun.disabled = false; wuRun.textContent = lbl; }
+});
 
 // --- Studio (AI planner + editable post cards + saved prompts) -------------
 async function loadStudio() {

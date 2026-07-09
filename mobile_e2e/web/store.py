@@ -164,6 +164,20 @@ class Store:
                     key TEXT PRIMARY KEY,
                     value TEXT
                 );
+                CREATE TABLE IF NOT EXISTS warmup_actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER,
+                    kind TEXT NOT NULL DEFAULT 'reply',
+                    target_author TEXT DEFAULT '',
+                    target_text TEXT DEFAULT '',
+                    target_url TEXT DEFAULT '',
+                    target_id TEXT DEFAULT '',
+                    draft TEXT DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    published_id TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
         # Migrate older databases that predate newer columns.
@@ -922,6 +936,96 @@ class Store:
     def last_strategy_run(self) -> Optional[dict]:
         runs = self.list_strategy_runs(limit=1)
         return runs[0] if runs else None
+
+    # -- warmup (engagement) actions ----------------------------------------
+    def add_warmup_action(self, *, account_id: Optional[int], kind: str = "reply",
+                          target_author: str = "", target_text: str = "",
+                          target_url: str = "", target_id: str = "",
+                          draft: str = "") -> Optional[dict]:
+        """Queue an engagement action (reply/like/follow). Deduped per account by
+        target so we don't warm the same post twice."""
+        target_text = (target_text or "").strip()
+        # Dedupe on the most specific identifier we actually have (an empty
+        # field must NOT match other empty-field rows).
+        ident_col, ident_val = None, None
+        if (target_id or "").strip():
+            ident_col, ident_val = "target_id", target_id.strip()
+        elif (target_url or "").strip():
+            ident_col, ident_val = "target_url", target_url.strip()
+        elif target_text:
+            ident_col, ident_val = "target_text", target_text
+        with self._lock, self._conn:
+            if ident_col:
+                dupe = self._conn.execute(
+                    f"SELECT id FROM warmup_actions WHERE kind = ? AND account_id IS ? "
+                    f"AND {ident_col} = ?",
+                    (kind, account_id, ident_val),
+                ).fetchone()
+                if dupe:
+                    return None
+            cur = self._conn.execute(
+                """INSERT INTO warmup_actions
+                   (account_id, kind, target_author, target_text, target_url,
+                    target_id, draft, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                (account_id, kind, target_author.strip(), target_text,
+                 target_url.strip(), target_id.strip(), draft.strip(), _now(), _now()),
+            )
+            aid = cur.lastrowid
+        return self.get_warmup_action(aid)
+
+    def get_warmup_action(self, action_id: int) -> Optional[dict]:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM warmup_actions WHERE id = ?", (action_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_warmup_actions(self, status: Optional[str] = None,
+                           account_id: Optional[int] = None, limit: int = 100) -> List[dict]:
+        sql = "SELECT * FROM warmup_actions"
+        clauses, params = [], []
+        if status:
+            clauses.append("status = ?"); params.append(status)
+        if account_id:
+            clauses.append("account_id = ?"); params.append(account_id)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC LIMIT ?"; params.append(limit)
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_warmup_draft(self, action_id: int, draft: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE warmup_actions SET draft = ?, updated_at = ? WHERE id = ?",
+                (draft, _now(), action_id),
+            )
+
+    def set_warmup_status(self, action_id: int, status: str,
+                          published_id: str = "") -> Optional[dict]:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE warmup_actions SET status = ?, published_id = ?, updated_at = ? WHERE id = ?",
+                (status, published_id, _now(), action_id),
+            )
+        self.log("warmup.action", f"{status} #{action_id}")
+        return self.get_warmup_action(action_id)
+
+    def warmup_stats(self, days: int = 1) -> dict:
+        cutoff = _cutoff(days * 24)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT kind, status, COUNT(*) c FROM warmup_actions "
+                "WHERE created_at >= ? GROUP BY kind, status", (cutoff,),
+            ).fetchall()
+        out = {"reply": {}, "like": {}, "follow": {}, "pending": 0, "done": 0}
+        for r in rows:
+            out.setdefault(r["kind"], {})[r["status"]] = r["c"]
+            if r["status"] in out:
+                out[r["status"]] += r["c"]
+        return out
 
     # -- settings (key/value meta) ------------------------------------------
     def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:

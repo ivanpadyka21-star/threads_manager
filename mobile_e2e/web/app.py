@@ -21,7 +21,8 @@ from flask import Flask, jsonify, render_template, request
 from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
 from mobile_e2e.utils.logger import get_logger
-from mobile_e2e.web import archetypes, feed_source, threads_client
+from mobile_e2e.web import archetypes, feed_source, threads_client, warmup
+from mobile_e2e.web.warmup import WarmupAgent
 from mobile_e2e.web.agent import AgentRunner
 from mobile_e2e.web.ai_prompt import build_ai_prompt
 from mobile_e2e.web.jobs import Job, JobManager
@@ -407,6 +408,66 @@ def create_app(
         # let the UI poll /api/strategy/runs for the new report.
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202
+
+    # -- warmup (engagement) branch -----------------------------------------
+    @app.get("/api/warmup/actions")
+    def warmup_actions():
+        status = request.args.get("status") or None
+        account_id = request.args.get("account_id", type=int)
+        return jsonify({
+            "actions": db.list_warmup_actions(status=status, account_id=account_id),
+            "stats": db.warmup_stats(days=1),
+        })
+
+    @app.post("/api/warmup/run")
+    def warmup_run():
+        data = request.get_json(silent=True) or {}
+        account_id = data.get("account_id") or get_strategy_settings(db)["account_id"]
+        account_id = int(account_id) if account_id else None
+        niche = db.get_setting(S_NICHE, "") or ""
+        keywords = [k.strip() for k in niche.split(",") if k.strip()]
+        replies = int(data.get("replies") or 3)
+        persona = (db.get_account(account_id) or {}).get("persona", "") if account_id else ""
+
+        result: dict = {}
+        def _work():
+            try:
+                r = WarmupAgent(db, account_id=account_id).run(
+                    keywords, replies=replies, persona=persona)
+                result.update(r)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("warmup.error", str(exc)[:200], account_id, level="info")
+
+        # Draft replies via Gemini off the request thread; UI polls the list.
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
+    @app.post("/api/warmup/actions/<int:action_id>/approve")
+    def warmup_approve(action_id: int):
+        action = db.get_warmup_action(action_id)
+        if action is None:
+            return jsonify({"error": "not found"}), 404
+        edited = (request.get_json(silent=True) or {}).get("draft")
+        if edited is not None and str(edited).strip():
+            db.set_warmup_draft(action_id, str(edited))
+        if action["kind"] != "reply":
+            # like/follow are manual — approving just marks them done.
+            return jsonify({"action": db.set_warmup_status(action_id, "done")})
+        try:
+            published_id = warmup.publish_reply_action(db, action_id)
+            return jsonify({"published_id": published_id, "action": db.get_warmup_action(action_id)})
+        except threads_client.ThreadsNotConfigured as exc:
+            return jsonify({"error": str(exc), "configured": False}), 409
+        except Exception as exc:  # noqa: BLE001 - tell the UI to post manually
+            return jsonify({"error": str(exc), "manual": True}), 200
+
+    @app.post("/api/warmup/actions/<int:action_id>/done")
+    def warmup_done(action_id: int):
+        return jsonify({"action": db.set_warmup_status(action_id, "done")})
+
+    @app.post("/api/warmup/actions/<int:action_id>/skip")
+    def warmup_skip(action_id: int):
+        return jsonify({"action": db.set_warmup_status(action_id, "skipped")})
 
     # -- autonomous agent (Gemini function-calling) -------------------------
     # In-memory conversation sessions so the agent has back-and-forth memory.

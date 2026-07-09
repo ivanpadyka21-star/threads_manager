@@ -156,3 +156,39 @@ def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) ->
         raise ValueError("Post text must not be empty.")
     _ensure_ready(credentials_file)
     return asyncio.run(_publish_async(text, credentials_file))
+
+
+async def _publish_reply_async(text: str, reply_to_id: str, credentials_file: str) -> str:
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        # reply_to_id is supported by create_container in recent pythreads; fall
+        # back to a plain container if the running version lacks the kwarg.
+        try:
+            container_id = await api.create_container(text=text, reply_to_id=reply_to_id)
+        except TypeError:
+            container_id = await api.create_container(text=text)
+        published_id = await api.publish_container(container_id)
+        return str(published_id)
+
+
+def publish_reply(text: str, reply_to_id: str,
+                  credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
+    """Publish a reply to another post (best-effort).
+
+    Replying to an arbitrary post needs its Threads media id. If the API rejects
+    it, the caller degrades to a manual reply (the draft + link are shown).
+
+    Raises:
+        ThreadsNotConfigured: If setup is incomplete.
+        Exception: Any Threads API error during publishing.
+    """
+    if not text or not text.strip():
+        raise ValueError("Reply text must not be empty.")
+    if not reply_to_id:
+        raise ValueError("reply_to_id is required.")
+    _ensure_ready(credentials_file)
+    return asyncio.run(_publish_reply_async(text, reply_to_id, credentials_file))

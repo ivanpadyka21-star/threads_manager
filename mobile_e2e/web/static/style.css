@@ -485,6 +485,25 @@ label.auto input { width: auto; margin: 0; }
 .insight-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 12px 0 6px; }
 .insight-label:first-child { margin-top: 0; }
 
+/* Warmup (engagement branch) */
+.wu-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.wu-stats .chip { cursor: default; }
+.wu-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
+@media (max-width: 900px) { .wu-cols { grid-template-columns: 1fr; } }
+.wu-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 12px; background: rgba(255,255,255,.02); }
+.wu-target { font-size: 12.5px; color: var(--dim); margin-bottom: 8px; line-height: 1.4; border-left: 2px solid var(--accent); padding-left: 8px; }
+.wu-draft { width: 100%; margin: 0 0 8px; font-size: 13.5px; }
+.wu-actions { display: flex; align-items: center; gap: 8px; }
+.wu-link { color: var(--accent-2); font-size: 12px; text-decoration: none; }
+.wu-link:hover { text-decoration: underline; }
+.wu-nolink { font: 12px "JetBrains Mono", monospace; color: var(--muted); }
+.wu-manual-row { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.wu-manual-row:last-child { border-bottom: none; }
+.wu-kind { width: 20px; text-align: center; }
+.wu-kind.like { color: var(--pink); } .wu-kind.follow { color: var(--accent-2); }
+.wu-manual-text { flex: 1; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wu-actions .mini, .wu-manual-row .mini { flex-shrink: 0; }
+
 /* Daily strategy cycle */
 .cycle-panel { border-color: rgba(177,75,255,.28); box-shadow: var(--shadow-soft), inset 0 1px 0 rgba(255,255,255,.04), 0 0 0 1px rgba(177,75,255,.06); }
 .cyc-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin-bottom: 14px; }
