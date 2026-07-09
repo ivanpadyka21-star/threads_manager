@@ -349,6 +349,15 @@ def create_app(
         return jsonify({"available": True, "found": len(found), "stored_new": stored,
                         "samples": db.list_feed_samples()})
 
+    @app.get("/api/brain")
+    def brain_status():
+        from mobile_e2e.ai import brain
+        return jsonify({
+            "openai": brain.has_openai(),
+            "strategist": brain.role_providers("strategist"),
+            "writer": brain.role_providers("writer"),
+        })
+
     # -- daily strategy cycle -----------------------------------------------
     @app.get("/api/strategy/settings")
     def strategy_settings():

@@ -513,6 +513,9 @@ label.auto input { width: auto; margin: 0; }
 .cyc-controls label { display: flex; flex-direction: column; gap: 4px; }
 .cyc-controls label.auto { flex-direction: row; align-items: center; gap: 8px; }
 .cyc-controls input, .cyc-controls select { margin-top: 0; }
+.cyc-brain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cyc-brain .chip { cursor: default; }
+.brain-hint { font-size: 12px; color: var(--muted); }
 .cyc-goalbar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .goal-row { display: flex; flex-direction: column; gap: 4px; }
 .goal-lbl { font: 12px "JetBrains Mono", monospace; color: var(--dim); }

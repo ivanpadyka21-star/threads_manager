@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
-from mobile_e2e.ai.agent import AIAgent
+from mobile_e2e.ai.brain import make_agent
 from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web import feed_source
 
@@ -49,7 +49,8 @@ class WarmupAgent:
                  agent_factory: Optional[Callable[[str], object]] = None):
         self._store = store
         self._account_id = account_id
-        self._agent_factory = agent_factory or (lambda sp: AIAgent(sp))
+        # Warm-up replies are bulk text → writer role (Gemini, GPT fallback).
+        self._agent_factory = agent_factory or (lambda sp: make_agent(sp, role="writer"))
 
     def _own_authors(self) -> set:
         """Our own account handles — never warm up (reply/like) our own posts."""

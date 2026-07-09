@@ -1075,7 +1075,20 @@ async function loadCycle(full) {
     }
     cycleLoaded = true;
   }
+  renderBrain();
   renderCycleRuns(await api("/api/strategy/runs"));
+}
+async function renderBrain() {
+  const wrap = $("#cyc-brain"); if (!wrap) return;
+  try {
+    const b = await api("/api/brain");
+    const nice = p => p === "openai" ? "GPT" : (p === "gemini" ? "Gemini" : p);
+    const chain = arr => (arr || []).map(nice).join(" → ");
+    wrap.innerHTML =
+      `<span class="chip ${b.openai ? "good" : ""}">🧠 ${t("brain.strategist")}: ${chain(b.strategist)}</span>` +
+      `<span class="chip">✍️ ${t("brain.writer")}: ${chain(b.writer)}</span>` +
+      (b.openai ? "" : `<span class="brain-hint">${t("brain.addkey")}</span>`);
+  } catch (e) { wrap.innerHTML = ""; }
 }
 function renderCycleRuns(runs) {
   const wrap = $("#cyc-runs"); if (!wrap) return;

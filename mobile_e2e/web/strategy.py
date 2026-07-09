@@ -27,7 +27,7 @@ import threading
 from datetime import datetime
 from typing import Callable, List, Optional
 
-from mobile_e2e.ai.agent import AIAgent
+from mobile_e2e.ai.brain import make_agent
 from mobile_e2e.utils.logger import get_logger
 from mobile_e2e.web import archetypes
 from mobile_e2e.web.ai_prompt import build_ai_prompt
@@ -87,7 +87,12 @@ class StrategyCycle:
                  agent_factory: Optional[Callable[[str], object]] = None):
         self._store = store
         self._account_id = account_id
-        self._agent_factory = agent_factory or (lambda sp: AIAgent(sp))
+        # When an explicit factory is injected (tests), use it for every role.
+        # Otherwise route by role: the STRATEGIST plans on the reasoning brain
+        # (GPT when available), the WRITER drafts on the fast/cheap model (Gemini).
+        self._agent_factory = agent_factory
+        self._planner_factory = agent_factory or (lambda sp: make_agent(sp, role="strategist"))
+        self._writer_factory = agent_factory or (lambda sp: make_agent(sp, role="writer"))
 
     # -- research -----------------------------------------------------------
     def _goal_block(self) -> str:
@@ -132,7 +137,7 @@ class StrategyCycle:
     # -- plan ---------------------------------------------------------------
     def plan(self, count: int, language: str) -> dict:
         context = self.build_context(count, language)
-        agent = self._agent_factory(PLANNER_SYSTEM)
+        agent = self._planner_factory(PLANNER_SYSTEM)
         raw = agent.generate_response(context)
         data = _extract_json(raw)
         posts = data.get("posts") or []
@@ -208,7 +213,7 @@ class StrategyCycle:
         for task in tasks:
             sys_p, usr_p = build_ai_prompt(task, account, insights=insights)
             try:
-                draft = self._agent_factory(sys_p).generate_response(usr_p)
+                draft = self._writer_factory(sys_p).generate_response(usr_p)
                 self._store.set_task_result(task["id"], draft)
                 self._store.record_event("ai.generate", f"strategy draft #{task['id']}",
                                          task.get("account_id"), level="ok")
