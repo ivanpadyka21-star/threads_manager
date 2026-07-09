@@ -168,8 +168,12 @@ class StrategyCycle:
     # -- full cycle ---------------------------------------------------------
     def run(self, *, count: int = 6, language: str = "Ukrainian",
             interval_minutes: int = 90, trigger: str = "manual",
-            draft: bool = True, refresh: bool = True) -> dict:
-        """Execute the full cycle and persist a strategy_run report."""
+            draft: bool = True, refresh: bool = True,
+            max_chars: Optional[int] = None) -> dict:
+        """Execute the full cycle and persist a strategy_run report.
+
+        ``max_chars`` caps each drafted post's length (for short, punchy drops).
+        """
         if refresh:
             try:
                 self.refresh_intel()
@@ -191,7 +195,8 @@ class StrategyCycle:
                 error="planner returned no posts")
 
         batch = self._store.add_strategy_batch(
-            self._account_id, posts, language=language, interval_minutes=interval_minutes)
+            self._account_id, posts, language=language,
+            interval_minutes=interval_minutes, max_chars=max_chars)
         tasks = batch["tasks"]
 
         drafted = 0
