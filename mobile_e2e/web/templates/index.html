@@ -23,6 +23,7 @@
         <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
         <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
         <button class="nav-item" data-tab="warmup"><span>🔥</span> <em data-i18n="nav.warmup">Прогрев</em></button>
+        <button class="nav-item" data-tab="followups"><span>💬</span> <em data-i18n="nav.followups">Автоответы</em></button>
         <button class="nav-item" data-tab="drops"><span>🚀</span> <em data-i18n="nav.drops">Заливы</em></button>
         <button class="nav-item" data-tab="daily"><span>📅</span> <em data-i18n="nav.daily">Подсчёт дня</em></button>
         <button class="nav-item" data-tab="legends"><span>🏆</span> <em data-i18n="nav.legends">Зал легенд</em></button>
@@ -293,6 +294,22 @@
           <p class="lh-sub" data-i18n="leg.sub">Планка легенды: от 1 000 просмотров. Здесь то, что зашло на эмоциях — и почему. Стратег объясняет каждую легенду.</p>
         </div>
         <div id="legends-list" class="legends-list"></div>
+      </section>
+
+      <!-- Follow-ups (auto-comment under our own posts) -->
+      <section class="tab" id="tab-followups">
+        <div class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="fu.title">💬 Автоответы под постами</h2>
+            <label class="auto"><input type="checkbox" id="fu-auto" checked> <span data-i18n="fu.auto">Авто каждые ~30 мин</span></label>
+          </div>
+          <div class="hint" data-i18n="fu.hint" style="margin-bottom:12px">Агент через время дописывает под наш пост один продуманный ответ — развивает тему и цепляет мужчин. Без спама: один ответ на пост. Ничего не публикуется без твоего ОК.</div>
+          <div class="fu-actions">
+            <button id="fu-draft" data-i18n="fu.draft">Сгенерировать ответы</button>
+            <span id="fu-cand" class="fu-cand"></span>
+          </div>
+        </div>
+        <div id="followups-list" class="followups-list"></div>
       </section>
 
       <!-- Daily close-out -->

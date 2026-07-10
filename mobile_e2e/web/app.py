@@ -573,7 +573,7 @@ def create_app(
         edited = (request.get_json(silent=True) or {}).get("draft")
         if edited is not None and str(edited).strip():
             db.set_warmup_draft(action_id, str(edited))
-        if action["kind"] != "reply":
+        if action["kind"] not in ("reply", "followup"):
             # like/follow are manual — approving just marks them done.
             return jsonify({"action": db.set_warmup_status(action_id, "done")})
         try:
@@ -591,6 +591,43 @@ def create_app(
     @app.post("/api/warmup/actions/<int:action_id>/skip")
     def warmup_skip(action_id: int):
         return jsonify({"action": db.set_warmup_status(action_id, "skipped")})
+
+    # -- follow-ups (auto-comment under our own posts, no spam) --------------
+    @app.get("/api/followups")
+    def followups_list():
+        account_id = request.args.get("account_id", type=int)
+        actions = [a for a in db.list_warmup_actions(status="pending", account_id=account_id)
+                   if a.get("kind") == "followup"]
+        published = [a for a in db.list_warmup_actions(status="done", account_id=account_id)
+                     if a.get("kind") == "followup"][:20]
+        return jsonify({
+            "pending": actions,
+            "published": published,
+            "candidates": len(db.posts_needing_followup(account_id=account_id, limit=50)),
+            "auto": str(db.get_setting("followups_auto", "1")) != "0",
+        })
+
+    @app.post("/api/followups/auto")
+    def followups_auto():
+        on = bool((request.get_json(silent=True) or {}).get("on", True))
+        db.set_setting("followups_auto", "1" if on else "0")
+        return jsonify({"auto": on})
+
+    @app.post("/api/followups/draft")
+    def followups_draft():
+        data = request.get_json(silent=True) or {}
+        account_id = data.get("account_id")
+        account_id = int(account_id) if account_id else None
+        per_run = int(data.get("per_run") or 6)
+
+        def _work():
+            try:
+                warmup.draft_followups(db, account_id=account_id, per_run=per_run)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("followup.error", str(exc)[:200], account_id, level="info")
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
 
     # -- autonomous agent (Gemini function-calling) -------------------------
     # In-memory conversation sessions so the agent has back-and-forth memory.

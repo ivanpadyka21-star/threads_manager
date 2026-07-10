@@ -42,6 +42,73 @@ REPLY_SYSTEM = (
 )
 
 
+FOLLOWUP_SYSTEM = (
+    "You are the account owner writing ONE follow-up comment UNDER YOUR OWN post, "
+    "a while after it went live, to DEVELOP THE THEME and pull more men into the "
+    "thread. This is not a new post and not 'thanks for the comments' filler — it "
+    "adds a fresh angle, a small confession, or a sharper turn of the same idea, "
+    "then ends with one easy question a man can answer in a second.\n"
+    "DNA: the real engine is EMOTION, not comments. Primary audience is MEN — "
+    "write as a real woman who lacks male attention, closeness and sex: simple, "
+    "warm, a little vulnerable, unashamed, never crude or pornographic, at most one "
+    "emoji. Make him feel there's a real woman on the other side he could be the "
+    "one for. Deepen the ORIGINAL post's emotion — do not repeat its wording. "
+    "One or two sentences, under 200 characters. Output ONLY the comment text."
+)
+
+
+def draft_followups(store, account_id: Optional[int] = None, *,
+                    min_age_minutes: int = 30, per_run: int = 6,
+                    agent_factory: Optional[Callable[[str], object]] = None,
+                    rules: Optional[str] = None) -> dict:
+    """Auto-draft ONE thoughtful follow-up per eligible own post (no spam).
+
+    Drafts only — never publishes. Each draft is queued as a ``followup``
+    warm-up action for human approval, so nothing reaches an account without
+    the owner's OK. Anti-spam is enforced by ``posts_needing_followup`` (one per
+    post, aged, recent) plus the ``per_run`` cap.
+    """
+    from mobile_e2e.web import strategy as _strategy
+
+    factory = agent_factory or (lambda sp: make_agent(sp, role="writer"))
+    if rules is None:
+        try:
+            rules = store.get_setting(_strategy.S_RULES, "")
+        except Exception:  # noqa: BLE001
+            rules = ""
+    posts = store.posts_needing_followup(
+        account_id=account_id, min_age_minutes=min_age_minutes, limit=per_run)
+    drafted = 0
+    for p in posts:
+        text = (p.get("payload") or p.get("title") or "").strip()
+        pid = p.get("published_id") or ""
+        if not text or not pid:
+            continue
+        acc = store.get_account(p.get("account_id")) if p.get("account_id") else None
+        handle = (acc or {}).get("handle", "")
+        persona = (acc or {}).get("persona", "")
+        prompt = "\n\n".join(x for x in [
+            f"OWNER RULES (highest priority): {rules}" if rules else "",
+            f"Your voice / persona: {persona}" if persona else "",
+            f"YOUR original post (a while ago):\n{text}",
+            "Write your single follow-up comment that develops this theme and "
+            "invites men to answer.",
+        ] if x)
+        try:
+            draft = factory(FOLLOWUP_SYSTEM).generate_response(prompt).strip()
+        except Exception as exc:  # noqa: BLE001 - degrade; skip this post
+            LOG.warning("followup draft failed: %s", exc)
+            continue
+        if draft and store.add_warmup_action(
+                account_id=p.get("account_id"), kind="followup",
+                target_author=handle, target_text=text, target_url="",
+                target_id=pid, draft=draft):
+            drafted += 1
+    if drafted:
+        store.log("followup.draft", f"{drafted} follow-ups", account_id)
+    return {"candidates": len(posts), "drafted": drafted}
+
+
 class WarmupAgent:
     """Discovers niche targets and drafts engaging, on-topic replies."""
 
@@ -199,8 +266,8 @@ def publish_reply_action(store, action_id: int) -> str:
     action = store.get_warmup_action(action_id)
     if action is None:
         raise KeyError(action_id)
-    if action["kind"] != "reply":
-        raise ValueError("only reply actions publish; like/follow are manual")
+    if action["kind"] not in ("reply", "followup"):
+        raise ValueError("only reply/followup actions publish; like/follow are manual")
     if not action.get("target_id"):
         raise ValueError("no target media id — post this reply manually from the draft")
 

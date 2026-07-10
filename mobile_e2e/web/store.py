@@ -1010,6 +1010,33 @@ class Store:
             rows = self._conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
+    def posts_needing_followup(self, account_id: Optional[int] = None,
+                               min_age_minutes: int = 30, since_hours: int = 24,
+                               limit: int = 8) -> List[dict]:
+        """Own published posts that deserve ONE thoughtful follow-up comment.
+
+        Anti-spam by construction: a post qualifies only if it is at least
+        ``min_age_minutes`` old (never reply instantly — that reads as a bot),
+        no older than ``since_hours`` (don't resurrect stale threads), and does
+        NOT already have a follow-up queued/published against it (one per post).
+        Ranked by views so we develop the threads that actually have life.
+        """
+        newest = (datetime.now(_TZ).replace(tzinfo=None)
+                  - timedelta(minutes=min_age_minutes)).isoformat(timespec="seconds")
+        oldest = _cutoff(since_hours)
+        sql = ("SELECT * FROM tasks WHERE kind = 'post' "
+               "AND published_id != '' AND published_id IS NOT NULL "
+               "AND updated_at <= ? AND updated_at >= ? "
+               "AND published_id NOT IN (SELECT target_id FROM warmup_actions "
+               "WHERE kind = 'followup' AND target_id != '') ")
+        params: list = [newest, oldest]
+        if account_id:
+            sql += "AND account_id = ? "; params.append(account_id)
+        sql += "ORDER BY views DESC, updated_at DESC LIMIT ?"; params.append(limit)
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
     def set_warmup_draft(self, action_id: int, draft: str) -> None:
         with self._lock, self._conn:
             self._conn.execute(

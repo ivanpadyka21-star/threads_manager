@@ -507,6 +507,22 @@ label.auto input { width: auto; margin: 0; }
 .wu-manual-text { flex: 1; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wu-actions .mini, .wu-manual-row .mini { flex-shrink: 0; }
 
+/* Follow-ups (auto-comment under our own posts) */
+.fu-actions { display: flex; align-items: center; gap: 12px; }
+.fu-cand { font-size: 12.5px; color: var(--dim); font-family: "JetBrains Mono", monospace; }
+.followups-list { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.fu-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: linear-gradient(180deg, rgba(255,46,126,.05), rgba(177,75,255,.03)); box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+.fu-post { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 4px; }
+.fu-badge { flex-shrink: 0; font: 11px "JetBrains Mono", monospace; color: var(--accent-2); background: rgba(126,231,255,.08); border: 1px solid rgba(126,231,255,.2); border-radius: 999px; padding: 3px 9px; }
+.fu-post-text { font-size: 13px; color: var(--dim); line-height: 1.45; }
+.fu-arrow { font-size: 11.5px; color: var(--muted); margin: 8px 0 4px 6px; }
+.fu-draft-in { width: 100%; margin: 0 0 10px; font-size: 14px; line-height: 1.5; border-radius: var(--radius-sm); border: 1px solid rgba(255,46,126,.25); background: rgba(255,255,255,.02); }
+.fu-draft-in:focus { border-color: var(--pink); outline: none; }
+.fu-done-head { margin: 18px 0 8px; font: 12px "JetBrains Mono", monospace; letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+.fu-done-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-left: 2px solid rgba(126,231,255,.3); margin-bottom: 6px; }
+.fu-done-post { font-size: 11.5px; color: var(--muted); }
+.fu-done-draft { font-size: 13px; color: var(--dim); }
+
 /* Hall of Legends */
 .grad-t { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .legends-hero { position: relative; text-align: center; padding: 46px 20px 34px; margin-bottom: 22px; overflow: hidden; border-radius: var(--radius-lg); border: 1px solid rgba(255,176,32,.2); background: radial-gradient(120% 100% at 50% -10%, rgba(255,176,32,.1), transparent 60%), radial-gradient(80% 80% at 50% 120%, rgba(177,75,255,.12), transparent 60%); }

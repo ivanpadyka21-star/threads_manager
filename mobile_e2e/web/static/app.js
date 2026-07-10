@@ -100,7 +100,7 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", followups: "nav.followups", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
@@ -108,6 +108,7 @@ function renderTab(name) {
   if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
   if (name === "studio") loadStudio();
   if (name === "warmup") loadWarmup();
+  if (name === "followups") loadFollowups();
   if (name === "drops") loadDrops();
   if (name === "daily") loadDaily();
   if (name === "legends") loadLegends();
@@ -699,6 +700,77 @@ if (wuRun) wuRun.addEventListener("click", async () => {
       if (pending > 0 || ++tries > 30) { clearInterval(poll); wuRun.disabled = false; wuRun.textContent = lbl; }
     }, 3000);
   } catch (err) { toast(String(err), "error", 6000); wuRun.disabled = false; wuRun.textContent = lbl; }
+});
+
+// --- Follow-ups (auto-comment under our own posts, no spam) ----------------
+async function loadFollowups() {
+  const d = await api("/api/followups").catch(() => null);
+  if (!d) return;
+  const auto = $("#fu-auto");
+  if (auto) {
+    if (!window.__liveRefresh || document.activeElement !== auto) auto.checked = d.auto !== false;
+    if (!auto.dataset.bound) {
+      auto.dataset.bound = "1";
+      auto.addEventListener("change", async () => {
+        await jpost("/api/followups/auto", { on: auto.checked }).catch(() => {});
+        toast(auto.checked ? t("fu.auto_on") : t("fu.auto_off"), "success", 2000);
+      });
+    }
+  }
+  const cand = $("#fu-cand");
+  if (cand) cand.textContent = d.candidates ? t("fu.cand").replace("{n}", d.candidates) : t("fu.cand0");
+  const wrap = $("#followups-list"); if (!wrap) return; wrap.innerHTML = "";
+  const pending = d.pending || [];
+  if (!pending.length) {
+    wrap.append(emptyState(t("fu.empty"), t("fu.empty_hint"), "💬"));
+  } else {
+    pending.forEach(a => wrap.append(renderFollowupCard(a)));
+  }
+  const pub = d.published || [];
+  if (pub.length) {
+    wrap.append(el("div", { class: "fu-done-head", text: t("fu.done_head").replace("{n}", pub.length) }));
+    pub.forEach(a => {
+      wrap.append(el("div", { class: "fu-done-row" },
+        el("span", { class: "fu-done-post", text: "↳ " + (a.target_text || "").slice(0, 60) }),
+        el("span", { class: "fu-done-draft", text: a.draft || "" })));
+    });
+  }
+}
+function renderFollowupCard(a) {
+  const card = el("div", { class: "fu-card" });
+  card.append(el("div", { class: "fu-post" },
+    el("span", { class: "fu-badge", text: a.target_author ? "@" + a.target_author.replace(/^@/, "") : t("fu.our_post") }),
+    el("span", { class: "fu-post-text", text: (a.target_text || "").slice(0, 140) })));
+  const draft = el("textarea", { class: "fu-draft-in", rows: 2 }); draft.value = a.draft || "";
+  card.append(el("div", { class: "fu-arrow", text: "↳ ответ-продолжение" }));
+  card.append(draft);
+  card.append(el("div", { class: "fu-actions" },
+    el("button", { class: "mini", text: t("fu.publish"), onclick: async () => {
+      const r = await jpost("/api/warmup/actions/" + a.id + "/approve", { draft: draft.value });
+      if (r.published_id) toast(t("fu.published"), "success");
+      else if (r.manual) toast(t("fu.manual"), "warn", 7000);
+      else if (r.error) toast(r.error, "error", 6000);
+      loadFollowups();
+    } }),
+    el("button", { class: "mini ghost", text: t("fu.skip"), onclick: async () => {
+      await jpost("/api/warmup/actions/" + a.id + "/skip", {}); loadFollowups(); } })));
+  return card;
+}
+const fuDraft = $("#fu-draft");
+if (fuDraft) fuDraft.addEventListener("click", async () => {
+  fuDraft.disabled = true; const lbl = fuDraft.textContent; fuDraft.textContent = t("fu.drafting");
+  try {
+    await jpost("/api/followups/draft", {});
+    toast(t("fu.started"), "success");
+    let tries = 0;
+    const poll = setInterval(async () => {
+      await loadFollowups();
+      const d = await api("/api/followups").catch(() => null);
+      if ((d && (d.pending || []).length) || ++tries > 20) {
+        clearInterval(poll); fuDraft.disabled = false; fuDraft.textContent = lbl;
+      }
+    }, 3000);
+  } catch (err) { toast(String(err), "error", 6000); fuDraft.disabled = false; fuDraft.textContent = lbl; }
 });
 
 // --- Drops (campaigns with a goal + evaluation) ----------------------------
@@ -1735,7 +1807,7 @@ setInterval(() => {
 // auto-refreshes insights). Numbers update instantly (no re-count) on live pulses.
 setInterval(async () => {
   if (isTyping()) return;
-  const live = { dashboard: loadDashGoals, stats: loadStats, daily: loadDaily, drops: loadDrops };
+  const live = { dashboard: loadDashGoals, stats: loadStats, daily: loadDaily, drops: loadDrops, followups: loadFollowups };
   const fn = live[currentTab];
   if (!fn) return;
   window.__liveRefresh = true;

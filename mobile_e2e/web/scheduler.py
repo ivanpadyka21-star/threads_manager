@@ -41,6 +41,9 @@ class PostScheduler:
         # Run one tick immediately, then every interval. Also refresh live post
         # metrics roughly every 10 minutes so views/comments climb on their own.
         metrics_every = max(1, int(600 / max(1, self._interval)))
+        # Auto-draft follow-ups roughly every 30 min (drafts only — they wait for
+        # the owner's approval before publishing; anti-spam is one per post).
+        followups_every = max(1, int(1800 / max(1, self._interval)))
         i = 0
         while True:
             try:
@@ -55,6 +58,15 @@ class PostScheduler:
                         LOG.info("auto-refreshed metrics for %s posts", n)
                 except Exception as exc:  # noqa: BLE001
                     LOG.warning("metrics refresh error: %s", exc)
+            if i % followups_every == 0:
+                try:
+                    if str(self._store.get_setting("followups_auto", "1")) not in ("0", "false", ""):
+                        from mobile_e2e.web.warmup import draft_followups
+                        r = draft_followups(self._store, per_run=6)
+                        if r.get("drafted"):
+                            LOG.info("auto-drafted %s follow-ups", r["drafted"])
+                except Exception as exc:  # noqa: BLE001
+                    LOG.warning("followup draft error: %s", exc)
             i += 1
             if self._stop.wait(self._interval):
                 break

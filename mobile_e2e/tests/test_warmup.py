@@ -58,6 +58,57 @@ def test_warmup_run_drafts_replies_and_hands_to_strategist(store):
     assert reply_drafts and all("?" in a["draft"] for a in reply_drafts)  # hooky question
 
 
+# -- follow-ups (auto-comment under our own posts, no spam) -------------------
+class FakeFollowupAgent:
+    def __init__(self, system_prompt):
+        pass
+
+    def generate_response(self, ctx):
+        return "Іноді так хочеться, щоб хтось написав першим. А ти б написав? 😉"
+
+
+def _published_post(store, account_id, text, pid, *, age_minutes=90, views=500):
+    """Create a published post and backdate it so it is eligible for a follow-up."""
+    from datetime import datetime, timedelta
+    from mobile_e2e.web.store import _TZ
+
+    task = store.add_task(account_id=account_id, kind="post", title=text[:40], payload=text)
+    store.set_task_status(task["id"], "done")
+    store.set_task_published(task["id"], pid)
+    store.set_task_metrics(task["id"], views, 0, 0)
+    old = (datetime.now(_TZ).replace(tzinfo=None)
+           - timedelta(minutes=age_minutes)).isoformat(timespec="seconds")
+    with store._lock, store._conn:
+        store._conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", (old, task["id"]))
+    return task
+
+
+def test_posts_needing_followup_respects_age_and_one_per_post(store):
+    acc = store.add_account(name="A", persona="p")
+    _published_post(store, acc["id"], "Стара тема про близькість", "1001", age_minutes=90)
+    _published_post(store, acc["id"], "Свіжий пост", "1002", age_minutes=5)  # too new
+    need = store.posts_needing_followup(min_age_minutes=30)
+    ids = {p["published_id"] for p in need}
+    assert "1001" in ids and "1002" not in ids   # aged in, too-new out
+    # once a follow-up exists for a post, it drops out (one per post = no spam)
+    store.add_warmup_action(account_id=acc["id"], kind="followup",
+                            target_id="1001", target_text="x", draft="y")
+    assert "1001" not in {p["published_id"] for p in store.posts_needing_followup(min_age_minutes=30)}
+
+
+def test_draft_followups_queues_pending_and_publishes_as_reply(store):
+    from mobile_e2e.web import warmup
+
+    acc = store.add_account(name="A", persona="playful")
+    _published_post(store, acc["id"], "Про те, чого не вистачає ввечері", "2001", age_minutes=90)
+    res = warmup.draft_followups(store, per_run=6, agent_factory=lambda sp: FakeFollowupAgent(sp))
+    assert res["drafted"] == 1
+    pend = [a for a in store.list_warmup_actions(status="pending") if a["kind"] == "followup"]
+    assert len(pend) == 1 and pend[0]["target_id"] == "2001" and "?" in pend[0]["draft"]
+    # a follow-up publishes via the same reply path (kind allowed)
+    assert pend[0]["kind"] == "followup"
+
+
 def test_warmup_hands_fresh_live_posts_to_strategist(store, monkeypatch):
     from mobile_e2e.web import feed_source
     acc = store.add_account(name="A")
