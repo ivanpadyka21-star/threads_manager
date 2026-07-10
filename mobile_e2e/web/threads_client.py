@@ -138,6 +138,38 @@ def fetch_insights(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FI
     return _parse_insights(raw)
 
 
+async def _replies_async(media_id: str, credentials_file: str) -> dict:
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+    from pythreads.threads import Threads
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        url = Threads.build_graph_api_url(
+            f"{media_id}/replies",
+            {"fields": "id,text,username,timestamp,is_reply_owned_by_me,"
+                       "hide_status,has_replies", "reverse": "false"},
+            api._access_token(),
+        )
+        return await api._get(url)
+
+
+def fetch_replies(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> list:
+    """Fetch the top-level replies (comments) on one of OUR OWN posts.
+
+    Needs the ``threads_read_replies`` permission on the token. Returns a list of
+    reply dicts (id, text, username, timestamp, is_reply_owned_by_me, hide_status,
+    has_replies). Best-effort: raises RuntimeError on an API error so the caller
+    can degrade.
+    """
+    _ensure_ready(credentials_file)
+    raw = asyncio.run(_replies_async(media_id, credentials_file))
+    if isinstance(raw, dict) and raw.get("error"):
+        raise RuntimeError(str(raw["error"].get("message", raw["error"])))
+    return list((raw or {}).get("data", [])) if isinstance(raw, dict) else []
+
+
 def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
     """Publish a text thread via the official API.
 

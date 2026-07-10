@@ -61,10 +61,16 @@ class PostScheduler:
             if i % followups_every == 0:
                 try:
                     if str(self._store.get_setting("followups_auto", "1")) not in ("0", "false", ""):
-                        from mobile_e2e.web.warmup import draft_followups, autopublish_followups
+                        from mobile_e2e.web.warmup import (draft_followups,
+                                                           draft_comment_replies,
+                                                           autopublish_followups)
                         r = draft_followups(self._store, per_run=6)
                         if r.get("drafted"):
                             LOG.info("auto-drafted %s follow-ups", r["drafted"])
+                        # Read real comments on our posts and draft hooky replies.
+                        cr = draft_comment_replies(self._store)
+                        if cr.get("drafted"):
+                            LOG.info("auto-drafted %s replies to people", cr["drafted"])
                         # Owner opted in to auto-publish: send a few, gently.
                         if str(self._store.get_setting("followups_autopublish", "0")) not in ("0", "false", ""):
                             p = autopublish_followups(self._store, max_per_pass=3)

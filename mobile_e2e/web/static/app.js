@@ -748,12 +748,15 @@ async function loadFollowups() {
   }
 }
 function renderFollowupCard(a) {
-  const card = el("div", { class: "fu-card" });
+  const isPerson = a.kind === "comment_reply";
+  const card = el("div", { class: "fu-card" + (isPerson ? " person" : "") });
   card.append(el("div", { class: "fu-post" },
-    el("span", { class: "fu-badge", text: a.target_author ? "@" + a.target_author.replace(/^@/, "") : t("fu.our_post") }),
+    el("span", { class: "fu-badge" + (isPerson ? " person" : ""),
+      text: isPerson ? "@" + (a.target_author || "someone").replace(/^@/, "")
+                     : (a.target_author ? "@" + a.target_author.replace(/^@/, "") : t("fu.our_post")) }),
     el("span", { class: "fu-post-text", text: (a.target_text || "").slice(0, 140) })));
   const draft = el("textarea", { class: "fu-draft-in", rows: 2 }); draft.value = a.draft || "";
-  card.append(el("div", { class: "fu-arrow", text: "↳ ответ-продолжение" }));
+  card.append(el("div", { class: "fu-arrow", text: isPerson ? t("fu.arrow_person") : t("fu.arrow_own") }));
   card.append(draft);
   card.append(el("div", { class: "fu-actions" },
     el("button", { class: "mini", text: t("fu.publish"), onclick: async () => {
@@ -767,6 +770,21 @@ function renderFollowupCard(a) {
       await jpost("/api/warmup/actions/" + a.id + "/skip", {}); loadFollowups(); } })));
   return card;
 }
+const fuPeople = $("#fu-people");
+if (fuPeople) fuPeople.addEventListener("click", async () => {
+  fuPeople.disabled = true; const lbl = fuPeople.textContent; fuPeople.textContent = t("fu.reading");
+  try {
+    await jpost("/api/followups/reply-people", {});
+    toast(t("fu.people_started"), "success", 4000);
+    let tries = 0; const before = ($("#followups-list") || {}).childElementCount || 0;
+    const poll = setInterval(async () => {
+      await loadFollowups();
+      if (($("#followups-list").childElementCount || 0) > before || ++tries > 24) {
+        clearInterval(poll); fuPeople.disabled = false; fuPeople.textContent = lbl;
+      }
+    }, 3000);
+  } catch (err) { toast(String(err), "error", 6000); fuPeople.disabled = false; fuPeople.textContent = lbl; }
+});
 const fuDraft = $("#fu-draft");
 if (fuDraft) fuDraft.addEventListener("click", async () => {
   fuDraft.disabled = true; const lbl = fuDraft.textContent; fuDraft.textContent = t("fu.drafting");

@@ -58,6 +58,103 @@ FOLLOWUP_SYSTEM = (
 )
 
 
+COMMENT_REPLY_SYSTEM = (
+    "You are the account owner replying to a REAL PERSON who commented under your "
+    "post. Reply directly and strictly ON-TOPIC to THEIR comment — react to what "
+    "they actually said, not a generic line. Goal: make them (a man, usually) feel "
+    "seen and want to reply AGAIN — so be catchy and personal ('цепко'): a warm, "
+    "playful, slightly vulnerable line that keeps the spark, then a short question "
+    "or a tease back.\n"
+    "DNA: emotion first; primary audience is MEN; sound like a real woman who lacks "
+    "male attention and closeness — simple, warm, unashamed, never crude or "
+    "pornographic, at most one emoji. If the comment is dismissive/negative or a "
+    "light troll, answer with calm confidence and warmth — flip it with charm, "
+    "never argue or sound hurt. Never post links or @mentions. One or two "
+    "sentences, under 180 characters. Output ONLY the reply text."
+)
+
+
+def draft_comment_replies(store, account_id: Optional[int] = None, *,
+                          max_posts: int = 6, per_post: int = 5,
+                          language: str = "Ukrainian",
+                          agent_factory: Optional[Callable[[str], object]] = None,
+                          rules: Optional[str] = None) -> dict:
+    """Read REAL comments on our recent posts and draft a hooky reply to each.
+
+    Needs the ``threads_read_replies`` scope. Skips our own replies
+    (``is_reply_owned_by_me``), hidden comments, and any comment we already
+    answered. Drafts only — queued as ``comment_reply`` actions for approval /
+    gentle auto-publish. The parent post id is kept in ``target_url`` so our own
+    replies stay excluded from the comment stats.
+    """
+    from mobile_e2e.web import strategy as _strategy, threads_client
+
+    factory = agent_factory or (lambda sp: make_agent(sp, role="writer"))
+    if rules is None:
+        try:
+            rules = store.get_setting(_strategy.S_RULES, "")
+        except Exception:  # noqa: BLE001
+            rules = ""
+    answered = store.answered_comment_ids()
+    # Never reply to ourselves — our own handles (belt-and-braces on top of the
+    # is_reply_owned_by_me flag, which isn't always present).
+    own = {(a.get("handle") or "").strip().lstrip("@").lower()
+           for a in store.list_accounts() if a.get("handle")}
+    posts = [p for p in store.published_tasks(limit=60)
+             if (p.get("replies") or 0) > 0 and p.get("published_id")]
+    if account_id:
+        posts = [p for p in posts if p.get("account_id") == account_id]
+    posts = posts[:max_posts]
+
+    drafted = scanned = 0
+    for p in posts:
+        pid = p["published_id"]
+        acc = store.get_account(p.get("account_id")) if p.get("account_id") else None
+        creds = (acc or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+        persona = (acc or {}).get("persona", "")
+        post_text = (p.get("payload") or p.get("title") or "").strip()
+        try:
+            replies = threads_client.fetch_replies(pid, creds)
+        except Exception as exc:  # noqa: BLE001 - scope/API issue → skip this post
+            LOG.warning("fetch_replies failed for %s: %s", pid, exc)
+            continue
+        picked = 0
+        for r in replies:
+            if picked >= per_post:
+                break
+            cid = str(r.get("id") or "")
+            text = (r.get("text") or "").strip()
+            author = (r.get("username") or "").strip().lstrip("@").lower()
+            if (not cid or not text or cid in answered
+                    or r.get("is_reply_owned_by_me") or author in own
+                    or str(r.get("hide_status") or "").upper() == "HIDDEN"):
+                continue
+            scanned += 1
+            prompt = "\n\n".join(x for x in [
+                f"OWNER RULES (highest priority): {rules}" if rules else "",
+                f"Your voice / persona: {persona}" if persona else "",
+                f"YOUR post:\n{post_text}",
+                f"A comment from @{r.get('username') or 'someone'}:\n{text}",
+                f"Reply to THIS person STRICTLY in {language} (never another "
+                "language), on-topic and catchy, so they answer you again.",
+            ] if x)
+            try:
+                draft = factory(COMMENT_REPLY_SYSTEM).generate_response(prompt).strip()
+            except Exception as exc:  # noqa: BLE001 - degrade; skip this comment
+                LOG.warning("comment reply draft failed: %s", exc)
+                continue
+            if draft and store.add_warmup_action(
+                    account_id=p.get("account_id"), kind="comment_reply",
+                    target_author=(r.get("username") or ""), target_text=text,
+                    target_url=pid, target_id=cid, draft=draft):
+                answered.add(cid)
+                picked += 1
+                drafted += 1
+    if drafted:
+        store.log("comment_reply.draft", f"{drafted} replies to people", account_id)
+    return {"scanned": scanned, "drafted": drafted, "posts": len(posts)}
+
+
 def draft_followups(store, account_id: Optional[int] = None, *,
                     min_age_minutes: int = 30, per_run: int = 6,
                     language: str = "Ukrainian",
@@ -293,8 +390,8 @@ def publish_reply_action(store, action_id: int) -> str:
     action = store.get_warmup_action(action_id)
     if action is None:
         raise KeyError(action_id)
-    if action["kind"] not in ("reply", "followup"):
-        raise ValueError("only reply/followup actions publish; like/follow are manual")
+    if action["kind"] not in ("reply", "followup", "comment_reply"):
+        raise ValueError("only reply/followup/comment_reply actions publish; like/follow are manual")
     if not action.get("target_id"):
         raise ValueError("no target media id — post this reply manually from the draft")
 

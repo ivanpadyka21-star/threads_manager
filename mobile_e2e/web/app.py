@@ -596,10 +596,11 @@ def create_app(
     @app.get("/api/followups")
     def followups_list():
         account_id = request.args.get("account_id", type=int)
+        kinds = ("followup", "comment_reply")
         actions = [a for a in db.list_warmup_actions(status="pending", account_id=account_id)
-                   if a.get("kind") == "followup"]
+                   if a.get("kind") in kinds]
         published = [a for a in db.list_warmup_actions(status="done", account_id=account_id)
-                     if a.get("kind") == "followup"][:20]
+                     if a.get("kind") in kinds][:20]
         return jsonify({
             "pending": actions,
             "published": published,
@@ -632,6 +633,21 @@ def create_app(
                 warmup.draft_followups(db, account_id=account_id, per_run=per_run)
             except Exception as exc:  # noqa: BLE001
                 db.record_event("followup.error", str(exc)[:200], account_id, level="info")
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
+    @app.post("/api/followups/reply-people")
+    def followups_reply_people():
+        data = request.get_json(silent=True) or {}
+        account_id = data.get("account_id")
+        account_id = int(account_id) if account_id else None
+
+        def _work():
+            try:
+                warmup.draft_comment_replies(db, account_id=account_id)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("comment_reply.error", str(exc)[:200], account_id, level="info")
 
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202

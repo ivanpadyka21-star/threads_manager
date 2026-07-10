@@ -514,6 +514,8 @@ label.auto input { width: auto; margin: 0; }
 .fu-cand { font-size: 12.5px; color: var(--dim); font-family: "JetBrains Mono", monospace; }
 .followups-list { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
 .fu-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; background: linear-gradient(180deg, rgba(255,46,126,.05), rgba(177,75,255,.03)); box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+.fu-card.person { background: linear-gradient(180deg, rgba(126,231,255,.06), rgba(177,75,255,.03)); border-color: rgba(126,231,255,.22); }
+.fu-badge.person { color: var(--pink); background: rgba(255,46,126,.08); border-color: rgba(255,46,126,.22); }
 .fu-post { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 4px; }
 .fu-badge { flex-shrink: 0; font: 11px "JetBrains Mono", monospace; color: var(--accent-2); background: rgba(126,231,255,.08); border: 1px solid rgba(126,231,255,.2); border-radius: 999px; padding: 3px 9px; }
 .fu-post-text { font-size: 13px; color: var(--dim); line-height: 1.45; }

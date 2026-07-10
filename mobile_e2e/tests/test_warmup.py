@@ -130,6 +130,48 @@ def test_own_followups_excluded_from_comment_stats(store, monkeypatch):
     assert fresh["replies"] == 7   # 8 reported − 1 of ours = only real people
 
 
+class FakeCommentReplyAgent:
+    def __init__(self, system_prompt):
+        pass
+
+    def generate_response(self, ctx):
+        return "О, а що тебе найбільше зачаровує у жінці? 😉"
+
+
+def test_draft_comment_replies_reads_real_comments_and_skips_own_and_dupes(store, monkeypatch):
+    from mobile_e2e.web import warmup, threads_client
+
+    acc = store.add_account(name="A", handle="@testacc", persona="playful")
+    _published_post(store, acc["id"], "Чого вам не вистачає ввечері?", "4001",
+                    age_minutes=60, views=900)
+    store.set_task_metrics(  # give it real replies so the scanner picks it up
+        [t for t in store.published_tasks() if t["published_id"] == "4001"][0]["id"], 900, 0, 3)
+
+    fake_replies = [
+        {"id": "c1", "text": "Обіймів", "username": "maxim", "is_reply_owned_by_me": False},
+        {"id": "c2", "text": "я сам", "username": "testacc"},           # us → skip
+        {"id": "c3", "text": "hidden one", "username": "x", "hide_status": "HIDDEN"},  # skip
+        {"id": "c4", "text": "теж самотньо", "username": "andrii", "is_reply_owned_by_me": False},
+    ]
+    monkeypatch.setattr(threads_client, "fetch_replies", lambda pid, creds: fake_replies)
+
+    res = warmup.draft_comment_replies(
+        store, agent_factory=lambda sp: FakeCommentReplyAgent(sp))
+    assert res["drafted"] == 2                       # only c1 + c4 (real, non-own, visible)
+    made = [a for a in store.list_warmup_actions(status="pending") if a["kind"] == "comment_reply"]
+    assert {a["target_id"] for a in made} == {"c1", "c4"}
+    assert all(a["target_url"] == "4001" for a in made)  # parent post kept for honest stats
+    assert store.answered_comment_ids() == {"c1", "c4"}
+
+    # a second pass answers nobody new (dedupe by comment id)
+    assert warmup.draft_comment_replies(
+        store, agent_factory=lambda sp: FakeCommentReplyAgent(sp))["drafted"] == 0
+
+    # our published comment-reply is excluded from the parent post's comment stat
+    store.set_warmup_status(made[0]["id"], "done", published_id="r1")
+    assert store.own_reply_counts().get("4001") == 1
+
+
 def test_warmup_hands_fresh_live_posts_to_strategist(store, monkeypatch):
     from mobile_e2e.web import feed_source
     acc = store.add_account(name="A")

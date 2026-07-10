@@ -1037,27 +1037,53 @@ class Store:
             rows = self._conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
-    def own_followup_counts(self) -> dict:
-        """{parent_published_id: how many of OUR OWN follow-ups we published on it}.
+    def own_reply_counts(self) -> dict:
+        """{parent_post_published_id: how many of OUR OWN replies we published in it}.
 
-        Used to keep the comment stats honest: our own auto-replies must never
-        pad the reply/comment numbers — only real people count.
+        Keeps the comment stats honest: our own auto-replies must never pad the
+        reply/comment numbers — only real people count. Counts BOTH follow-ups
+        under our post (parent id in ``target_id``) and replies to commenters
+        (parent post id kept in ``target_url``).
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT target_id, COUNT(*) c FROM warmup_actions "
-                "WHERE kind = 'followup' AND status = 'done' "
-                "AND target_id != '' AND target_id IS NOT NULL GROUP BY target_id"
+                "SELECT parent, COUNT(*) c FROM ("
+                "  SELECT target_id AS parent FROM warmup_actions "
+                "    WHERE kind = 'followup' AND status = 'done' "
+                "    AND target_id != '' AND target_id IS NOT NULL "
+                "  UNION ALL "
+                "  SELECT target_url AS parent FROM warmup_actions "
+                "    WHERE kind = 'comment_reply' AND status = 'done' "
+                "    AND target_url != '' AND target_url IS NOT NULL "
+                ") GROUP BY parent"
             ).fetchall()
-        return {r["target_id"]: r["c"] for r in rows}
+        return {r["parent"]: r["c"] for r in rows}
 
-    def pending_followups(self, limit: int = 50) -> List[dict]:
-        """Approved-but-unpublished follow-ups, oldest first (for gentle auto-publish)."""
+    # Back-compat alias (older callers/tests).
+    def own_followup_counts(self) -> dict:
+        return self.own_reply_counts()
+
+    def answered_comment_ids(self) -> set:
+        """Comment ids we've already drafted/queued/published a reply for (dedupe)."""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT * FROM warmup_actions WHERE kind = 'followup' AND status = 'pending' "
+                "SELECT target_id FROM warmup_actions WHERE kind = 'comment_reply' "
+                "AND target_id != '' AND target_id IS NOT NULL"
+            ).fetchall()
+        return {r["target_id"] for r in rows}
+
+    def pending_followups(self, limit: int = 50,
+                          kinds: tuple = ("followup", "comment_reply")) -> List[dict]:
+        """Approved-but-unpublished auto-replies, oldest first (gentle auto-publish).
+
+        Covers both follow-ups under our own posts and replies to commenters.
+        """
+        marks = ",".join("?" for _ in kinds)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM warmup_actions WHERE kind IN ({marks}) AND status = 'pending' "
                 "AND target_id != '' AND target_id IS NOT NULL "
-                "ORDER BY created_at ASC LIMIT ?", (limit,),
+                "ORDER BY created_at ASC LIMIT ?", (*kinds, limit),
             ).fetchall()
         return [dict(r) for r in rows]
 
