@@ -1735,6 +1735,7 @@ async function loadCycle(full) {
       if ($("#cyc-niche")) $("#cyc-niche").value = cfg.niche || "";
       if ($("#cyc-rules")) $("#cyc-rules").value = cfg.rules || "";
     }
+    renderStrategistLessons(cfg);
     renderGoalBar(cfg);
     const sel = $("#cyc-account");
     if (sel && !sel.children.length) {
@@ -1808,6 +1809,25 @@ const cycRulesSave = $("#cyc-rules-save");
 if (cycRulesSave) cycRulesSave.addEventListener("click", async () => {
   await jpost("/api/strategy/settings", { rules: $("#cyc-rules").value });
   toast(t("cyc.rules.saved"), "success");
+});
+function renderStrategistLessons(cfg) {
+  const body = $("#cyc-lessons-body"); if (!body) return;
+  const age = $("#cyc-lessons-age");
+  if (age) age.textContent = cfg.lessons_age == null ? t("cyc.lessons.never") : t("cyc.lessons.self").replace("{ago}", fmtAgo(cfg.lessons_age));
+  const txt = (cfg.lessons || "").trim();
+  if (!txt) { body.innerHTML = `<div class="cyc-lessons-empty">${t("cyc.lessons.empty")}</div>`; return; }
+  body.innerHTML = "";
+  txt.split(/\n+/).filter(l => l.trim()).forEach(l =>
+    body.append(el("div", { class: "cyc-lesson", text: l.trim() })));
+}
+const cycEvolve = $("#cyc-evolve");
+if (cycEvolve) cycEvolve.addEventListener("click", async () => {
+  cycEvolve.disabled = true; const lbl = cycEvolve.textContent; cycEvolve.textContent = t("cyc.evolving");
+  try {
+    await jpost("/api/strategy/evolve", {});
+    toast(t("cyc.evolved"), "success", 4000);
+    setTimeout(async () => { const cfg = await api("/api/strategy/settings"); renderStrategistLessons(cfg); cycEvolve.disabled = false; cycEvolve.textContent = lbl; }, 6000);
+  } catch { cycEvolve.disabled = false; cycEvolve.textContent = lbl; }
 });
 const cycSave = $("#cyc-save");
 if (cycSave) cycSave.addEventListener("click", async () => {

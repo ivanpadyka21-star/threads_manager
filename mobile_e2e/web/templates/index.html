@@ -502,6 +502,14 @@
             <textarea id="cyc-rules" rows="3" data-i18n-ph="cyc.rules.ph" placeholder="напр. не начинать с «Привіт, красуні»; меньше эмодзи; острее вопрос; без клише"></textarea>
             <button id="cyc-rules-save" class="mini ghost" data-i18n="cyc.rules.save" style="margin-top:6px">Сохранить правила</button>
           </label>
+          <div class="cyc-lessons">
+            <div class="cyc-lessons-head">
+              <span data-i18n="cyc.lessons">🧠 Уроки стратега (он выводит их сам из результатов)</span>
+              <span id="cyc-lessons-age" class="cyc-lessons-age"></span>
+              <button id="cyc-evolve" class="mini ghost" data-i18n="cyc.evolve">↻ Обновить самому</button>
+            </div>
+            <div id="cyc-lessons-body" class="cyc-lessons-body"></div>
+          </div>
           <div class="cyc-controls">
             <label class="auto"><input type="checkbox" id="cyc-enabled"> <span data-i18n="cyc.enabled">Авто раз в день</span></label>
             <label><span data-i18n="cyc.hour">Час (Киев)</span><input type="number" id="cyc-hour" min="0" max="23" style="width:70px"></label>

@@ -242,6 +242,8 @@ const TRANSLATIONS = {
     "cyc.rules": "🧠 Правила стратега (твои требования — вшиваются в каждый план и пост)",
     "cyc.rules.ph": "напр. не начинать с «Привіт, красуні»; меньше эмодзи; острее вопрос; без клише",
     "cyc.rules.save": "Сохранить правила", "cyc.rules.saved": "Правила сохранены — стратег будет им следовать",
+    "cyc.lessons": "🧠 Уроки стратега (он выводит их сам из результатов)", "cyc.evolve": "↻ Обновить самому", "cyc.evolving": "Думаю…", "cyc.evolved": "Стратег обновил свои уроки из результатов",
+    "cyc.lessons.self": "обновлено самим {ago}", "cyc.lessons.never": "ещё не выводил", "cyc.lessons.empty": "Стратег ещё не вывел уроки — появятся после первого разбора залива или по кнопке.",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -482,6 +484,8 @@ const TRANSLATIONS = {
     "cyc.rules": "🧠 Strategist rules (your requirements — baked into every plan and post)",
     "cyc.rules.ph": "e.g. don't open with «Привіт, красуні»; fewer emojis; sharper question; no cliché",
     "cyc.rules.save": "Save rules", "cyc.rules.saved": "Rules saved — the strategist will follow them",
+    "cyc.lessons": "🧠 Strategist lessons (self-distilled from results)", "cyc.evolve": "↻ Self-update", "cyc.evolving": "Thinking…", "cyc.evolved": "The strategist updated its lessons from results",
+    "cyc.lessons.self": "self-updated {ago}", "cyc.lessons.never": "not distilled yet", "cyc.lessons.empty": "No lessons yet — they appear after the first drop review or via the button.",
   },
 };
 

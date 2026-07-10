@@ -419,6 +419,18 @@ def create_app(
             db.set_setting(S_RULES, str(data.get("rules") or ""))
         return jsonify(get_strategy_settings(db))
 
+    @app.post("/api/strategy/evolve")
+    def strategy_evolve():
+        def _work():
+            try:
+                from mobile_e2e.web import strategy as _st
+                _st.evolve_strategist(db)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("strategy.error", str(exc)[:200], None, level="info")
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
     @app.get("/api/strategy/runs")
     def strategy_runs():
         return jsonify(db.list_strategy_runs())

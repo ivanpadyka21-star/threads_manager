@@ -38,6 +38,33 @@ def test_snapshot_upsert_and_kpi_aggregate(store):
     assert k["accounts"][0]["account"] == "@b"
 
 
+def test_strategist_self_evolves_lessons(store):
+    """The strategist distils a learned playbook from real results into S_LESSONS."""
+    from mobile_e2e.web import strategy as st
+
+    # some published posts (winners) to learn from
+    for i, v in enumerate([1200, 90]):
+        t = store.add_task(account_id=None, kind="post", title=f"p{i}", payload=f"post {i}")
+        store.set_task_status(t["id"], "done")
+        store.set_task_published(t["id"], str(1000 + i))
+        store.set_task_metrics(t["id"], v, 0, 0)
+
+    class FakeStrategist:
+        def __init__(self, sp):
+            pass
+
+        def generate_response(self, ctx):
+            return "1. Целься в мужчин.\n2. Бинарный выбор с риском для эго."
+
+    lessons = st.evolve_strategist(store, agent_factory=lambda sp: FakeStrategist(sp))
+    assert "мужчин" in lessons
+    assert store.get_setting(st.S_LESSONS) == lessons
+    assert store.setting_age_seconds(st.S_LESSONS_AT) is not None
+    # lessons flow into the planning context (under, not over, the owner rules)
+    ctx = st.StrategyCycle(store).build_context(count=3, language="Ukrainian")
+    assert "LEARNED LESSONS" in ctx and "Бинарный выбор" in ctx
+
+
 def test_demographics_from_meta(store):
     a = store.add_account(name="A", handle="@a")
     store.snapshot_account_insight(a["id"], followers=150)

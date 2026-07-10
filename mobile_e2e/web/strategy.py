@@ -140,10 +140,15 @@ class StrategyCycle:
         rules = (self._store.get_setting(S_RULES, DEFAULTS[S_RULES]) or "").strip()
         rules_block = (f"=== OWNER RULES (highest priority — always obey) ===\n{rules}"
                        if rules else "")
+        lessons = (self._store.get_setting(S_LESSONS, "") or "").strip()
+        lessons_block = (f"=== LEARNED LESSONS (you distilled these from our own "
+                         f"results — apply them, but never override the OWNER RULES) ===\n{lessons}"
+                         if lessons else "")
 
         return "\n\n".join(x for x in [
             self._goal_block(),
             rules_block,
+            lessons_block,
             f"PERSONA (write in this first-person voice): {persona or '(not set)'}",
             f"=== YOUR OWN PERFORMANCE ===\n{insights}",
             f"=== NICHE / FEED TRENDS ===\n{feed}",
@@ -235,6 +240,9 @@ class StrategyCycle:
         insights = self._store.content_insights(account_id=self._account_id)["text"]
         account = self._store.get_account(self._account_id) if self._account_id else None
         rules = self._store.get_setting(S_RULES, DEFAULTS[S_RULES]) or ""
+        lessons = (self._store.get_setting(S_LESSONS, "") or "").strip()
+        if lessons:  # fold the self-learned playbook in under the owner rules
+            rules = f"{rules}\n\nLEARNED LESSONS (from our own results): {lessons}"
         done = 0
         for task in tasks:
             sys_p, usr_p = build_ai_prompt(task, account, insights=insights, rules=rules)
@@ -262,10 +270,13 @@ S_GOAL_VIEWS = "strategy_goal_views"
 S_GOAL_COMMENTS = "strategy_goal_comments"
 S_NICHE = "strategy_niche"
 S_RULES = "strategist_rules"
+S_LESSONS = "strategist_lessons"          # self-learned playbook (auto-updated)
+S_LESSONS_AT = "strategist_lessons_at"    # when it last evolved
 
 DEFAULTS = {S_ENABLED: "0", S_HOUR: "9", S_COUNT: "6",
             S_LANGUAGE: "Ukrainian", S_ACCOUNT: "", S_INTERVAL: "90",
             S_GOAL_VIEWS: "20000", S_GOAL_COMMENTS: "300",
+            S_LESSONS: "",
             S_NICHE: "стосунки, секс, зрада, побачення, пристрасть, близькість",
             S_RULES: (
                 "Пиши как настоящая живая женщина, которой не хватает мужского внимания, "
@@ -374,7 +385,67 @@ def evaluate_drop(store, drop_id: int, agent_factory=None) -> Optional[str]:
         return None
     store.update_drop(drop_id, verdict=verdict, status="evaluated")
     store.log("drop.evaluate", f"#{drop_id}", None)
+    # Self-learning: fold this fresh verdict into the evolving playbook.
+    try:
+        evolve_strategist(store, agent_factory=agent_factory)
+    except Exception as exc:  # noqa: BLE001 - never block the verdict on evolution
+        LOG.warning("strategist evolve failed: %s", exc)
     return verdict
+
+
+EVOLVE_SYSTEM = (
+    "You are the content strategist EVOLVING YOUR OWN PLAYBOOK from real results. "
+    "You are given our winning posts (high views/reply-rate), our flops, and recent "
+    "drop verdicts. Distil what CONSISTENTLY works and what to STOP doing into a "
+    "tight, durable playbook of 6-9 concrete lessons in Russian — imperative, "
+    "specific, no fluff (e.g. 'бинарный выбор с риском для самолюбия бьёт сильнее "
+    "открытого вопроса'; 'обращение к дівчата убивает охват — целься в мужчин'). "
+    "Focus on EMOTION and MALE psychology (our audience is men). This playbook is "
+    "injected into every future post, so keep it sharp and general (patterns, not "
+    "one-off wording). Do NOT contradict the owner's rules; refine tactics under "
+    "them. Output ONLY the numbered lessons."
+)
+
+
+def evolve_strategist(store, agent_factory=None, min_views: int = 300) -> Optional[str]:
+    """The strategist rewrites its OWN learned playbook from real outcomes.
+
+    Reads winners + flops + recent drop verdicts and distils durable lessons into
+    ``S_LESSONS``, which ``build_context``/``_draft`` inject under the owner rules.
+    This is the self-development loop: results → lessons → better next posts.
+    """
+    winners = store.top_posts(by="views", limit=8)
+    flops = [p for p in store.top_posts(by="views", limit=200)
+             if (p.get("views") or 0) > 0][-6:]
+    verdicts = [d.get("verdict") for d in store.list_drops() if d.get("verdict")][:6]
+
+    def _fmt(p):
+        return f"{p.get('views',0)}v {p.get('replies',0)}c: «{(p.get('payload') or p.get('title') or '')[:90]}»"
+
+    parts = ["WINNERS (what landed):"]
+    parts += [f"  {_fmt(p)}" for p in winners]
+    if flops:
+        parts.append("FLOPS (weak reach):")
+        parts += [f"  {_fmt(p)}" for p in flops]
+    if verdicts:
+        parts.append("RECENT DROP VERDICTS (your own honest analysis):")
+        parts += [f"  - {v}" for v in verdicts]
+    prev = (store.get_setting(S_LESSONS, "") or "").strip()
+    if prev:
+        parts.append(f"YOUR CURRENT PLAYBOOK (refine/upgrade it, keep what still holds):\n{prev}")
+    context = "\n".join(parts)
+
+    factory = agent_factory or (lambda sp: make_agent(sp, role="strategist"))
+    try:
+        lessons = factory(EVOLVE_SYSTEM).generate_response(context).strip()
+    except Exception as exc:  # noqa: BLE001
+        LOG.warning("evolve_strategist failed: %s", exc)
+        return None
+    if lessons:
+        store.set_setting(S_LESSONS, lessons)
+        store.mark_heartbeat(S_LESSONS_AT)
+        store.log("strategist.evolve", f"{len(lessons)} chars", None)
+    return lessons
 
 
 LEGEND_SYSTEM = (
@@ -478,6 +549,8 @@ def get_strategy_settings(store) -> dict:
         "goal_comments": int(store.get_setting(S_GOAL_COMMENTS, DEFAULTS[S_GOAL_COMMENTS]) or 0),
         "niche": store.get_setting(S_NICHE, DEFAULTS[S_NICHE]),
         "rules": store.get_setting(S_RULES, DEFAULTS[S_RULES]),
+        "lessons": store.get_setting(S_LESSONS, ""),
+        "lessons_age": store.setting_age_seconds(S_LESSONS_AT),
         "last_date": store.get_setting(S_LAST_DATE, ""),
     }
 

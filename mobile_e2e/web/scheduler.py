@@ -88,6 +88,15 @@ class PostScheduler:
                     self._store.mark_heartbeat("followups_last_run")
                 except Exception as exc:  # noqa: BLE001
                     LOG.warning("followup auto error: %s", exc)
+                # Self-develop the strategist from real results ~once a day.
+                try:
+                    from mobile_e2e.web.strategy import S_LESSONS_AT, evolve_strategist
+                    age = self._store.setting_age_seconds(S_LESSONS_AT)
+                    if age is None or age > 20 * 3600:
+                        evolve_strategist(self._store)
+                        LOG.info("strategist evolved its playbook")
+                except Exception as exc:  # noqa: BLE001
+                    LOG.warning("strategist evolve error: %s", exc)
                 # Refresh account KPI snapshots at most every ~3 hours.
                 try:
                     age = self._store.setting_age_seconds("account_insights_last")
