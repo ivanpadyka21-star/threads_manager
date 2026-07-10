@@ -59,10 +59,14 @@ def main() -> None:
     # threads_keyword_search powers the warm-up agent's live niche feed search —
     # the app must have that permission/use-case enabled in the Meta dashboard,
     # otherwise drop it here (search then falls back to manual samples).
+    # threads_read_replies lets us READ the replies/comments on our OWN posts
+    # (threads_manage_replies only *creates/hides* them) — this unlocks replying
+    # to real people's comments. It is first-party data ("owned by the app user"),
+    # available at Standard Access like threads_manage_insights.
     scopes_env = os.getenv(
         "E2E_THREADS_SCOPES",
         "threads_basic,threads_content_publish,threads_manage_replies,"
-        "threads_manage_insights,threads_keyword_search",
+        "threads_read_replies,threads_manage_insights,threads_keyword_search",
     )
     scopes = [s.strip() for s in scopes_env.split(",") if s.strip()]
     config = Threads.load_configuration(scopes=scopes)
