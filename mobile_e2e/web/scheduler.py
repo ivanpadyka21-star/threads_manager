@@ -88,6 +88,16 @@ class PostScheduler:
                     self._store.mark_heartbeat("followups_last_run")
                 except Exception as exc:  # noqa: BLE001
                     LOG.warning("followup auto error: %s", exc)
+                # Refresh account KPI snapshots at most every ~3 hours.
+                try:
+                    age = self._store.setting_age_seconds("account_insights_last")
+                    if age is None or age > 3 * 3600:
+                        from mobile_e2e.web.kpi import refresh_account_insights
+                        k = refresh_account_insights(self._store)
+                        if k.get("accounts"):
+                            LOG.info("refreshed KPI for %s accounts", k["accounts"])
+                except Exception as exc:  # noqa: BLE001
+                    LOG.warning("kpi refresh error: %s", exc)
             i += 1
             if self._stop.wait(self._interval):
                 break

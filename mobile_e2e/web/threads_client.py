@@ -218,6 +218,110 @@ def account_username(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
     return asyncio.run(_username_async(credentials_file))
 
 
+async def _account_insights_async(user_id: str, credentials_file: str, days: int) -> dict:
+    import time as _time
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+    from pythreads.threads import Threads
+
+    since = max(1712991600, int(_time.time()) - days * 86400)
+    until = int(_time.time())
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+
+    def _total(raw):
+        for it in (raw or {}).get("data", []):
+            tv = it.get("total_value")
+            if isinstance(tv, dict):
+                yield it.get("name"), int(tv.get("value") or 0)
+
+    async with API(credentials=credentials) as api:
+        tok = api._access_token()
+        out: dict = {"followers": 0, "profile_views": 0, "profile_views_series": [],
+                     "likes": 0, "replies": 0, "reposts": 0, "quotes": 0, "clicks": 0}
+        # followers_count ignores date range (a running total)
+        try:
+            r = await api._get(Threads.build_graph_api_url(
+                f"{user_id}/threads_insights", {"metric": "followers_count"}, tok))
+            for _n, v in _total(r):
+                out["followers"] = v
+        except Exception:  # noqa: BLE001
+            pass
+        # profile views: a per-day time series
+        try:
+            r = await api._get(Threads.build_graph_api_url(
+                f"{user_id}/threads_insights",
+                {"metric": "views", "since": since, "until": until}, tok))
+            for it in (r or {}).get("data", []):
+                for v in it.get("values", []) or []:
+                    d = str(v.get("end_time", ""))[:10]
+                    out["profile_views_series"].append({"date": d, "value": int(v.get("value") or 0)})
+            out["profile_views"] = sum(x["value"] for x in out["profile_views_series"])
+        except Exception:  # noqa: BLE001
+            pass
+        # account engagement totals over the window
+        try:
+            r = await api._get(Threads.build_graph_api_url(
+                f"{user_id}/threads_insights",
+                {"metric": "likes,replies,reposts,quotes,clicks",
+                 "since": since, "until": until}, tok))
+            for name, v in _total(r):
+                if name in out:
+                    out[name] = v
+        except Exception:  # noqa: BLE001
+            pass
+        return out
+
+
+def fetch_account_insights(user_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE,
+                           days: int = 14) -> dict:
+    """Account-level KPIs: followers, profile views (series), clicks, engagement.
+
+    Uses ``threads_manage_insights`` (first-party, works at Standard Access).
+    """
+    _ensure_ready(credentials_file)
+    return asyncio.run(_account_insights_async(user_id, credentials_file, days))
+
+
+async def _demographics_async(user_id: str, credentials_file: str, breakdown: str) -> dict:
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+    from pythreads.threads import Threads
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        url = Threads.build_graph_api_url(
+            f"{user_id}/threads_insights",
+            {"metric": "follower_demographics", "breakdown": breakdown},
+            api._access_token())
+        return await api._get(url)
+
+
+def fetch_follower_demographics(user_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE,
+                                breakdown: str = "gender") -> Optional[dict]:
+    """Follower breakdown (gender/age/country). Needs 100+ followers, else None.
+
+    Returns ``{label: value}`` or None if unavailable (small account / error).
+    """
+    _ensure_ready(credentials_file)
+    try:
+        raw = asyncio.run(_demographics_async(user_id, credentials_file, breakdown))
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(raw, dict) or raw.get("error"):
+        return None
+    out: dict = {}
+    for it in raw.get("data", []):
+        tv = it.get("total_value") or {}
+        for br in tv.get("breakdowns", []) or []:
+            for res in br.get("results", []) or []:
+                dims = res.get("dimension_values") or []
+                if dims:
+                    out[str(dims[0])] = int(res.get("value") or 0)
+    return out or None
+
+
 def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
     """Publish a text thread via the official API.
 

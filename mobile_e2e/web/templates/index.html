@@ -19,6 +19,7 @@
       </div>
       <nav class="nav">
         <button class="nav-item active" data-tab="dashboard"><span>▚</span> <em data-i18n="nav.dashboard">Дашборд</em></button>
+        <button class="nav-item" data-tab="kpi"><span>📈</span> <em data-i18n="nav.kpi">KPI Рост</em></button>
         <button class="nav-item" data-tab="accounts"><span>◉</span> <em data-i18n="nav.accounts">Аккаунты</em></button>
         <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
         <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
@@ -294,6 +295,22 @@
           <p class="lh-sub" data-i18n="leg.sub">Планка легенды: от 1 000 просмотров. Здесь то, что зашло на эмоциях — и почему. Стратег объясняет каждую легенду.</p>
         </div>
         <div id="legends-list" class="legends-list"></div>
+      </section>
+
+      <!-- KPI — account growth -->
+      <section class="tab" id="tab-kpi">
+        <div class="kpi-hero">
+          <div class="kpi-hero-glow"></div>
+          <p class="kpi-eyebrow" data-i18n="kpi.eyebrow">📈 РОСТ АККАУНТОВ</p>
+          <h1 class="kpi-title" data-i18n="kpi.title">Наши <span class="grad-t">KPI</span> в реальных цифрах</h1>
+          <div id="kpi-hero-cards" class="kpi-hero-cards"></div>
+          <div class="kpi-actions">
+            <button id="kpi-refresh" class="mini" data-i18n="kpi.refresh">↻ Обновить</button>
+            <span id="kpi-updated" class="kpi-updated"></span>
+          </div>
+        </div>
+        <div id="kpi-growth"></div>
+        <div id="kpi-accounts" class="kpi-accounts"></div>
       </section>
 
       <!-- Follow-ups (auto-comment under our own posts) -->

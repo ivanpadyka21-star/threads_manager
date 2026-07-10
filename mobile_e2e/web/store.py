@@ -192,6 +192,20 @@ class Store:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS account_insights (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    followers INTEGER DEFAULT 0,
+                    profile_views INTEGER DEFAULT 0,
+                    likes INTEGER DEFAULT 0,
+                    replies INTEGER DEFAULT 0,
+                    reposts INTEGER DEFAULT 0,
+                    quotes INTEGER DEFAULT 0,
+                    clicks INTEGER DEFAULT 0,
+                    captured_at TEXT NOT NULL,
+                    UNIQUE(account_id, date)
+                );
                 """
             )
         # Migrate older databases that predate newer columns.
@@ -214,6 +228,82 @@ class Store:
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
         # Did the person reply back to OUR published reply? (engagement tracking)
         self._ensure_column("warmup_actions", "got_reply", "INTEGER DEFAULT 0")
+
+    # -- account KPI insights -----------------------------------------------
+    def snapshot_account_insight(self, account_id: int, **metrics) -> None:
+        """Upsert today's account KPI snapshot (followers, views, clicks, …)."""
+        cols = ("followers", "profile_views", "likes", "replies", "reposts",
+                "quotes", "clicks")
+        vals = {c: int(metrics.get(c, 0) or 0) for c in cols}
+        with self._lock, self._conn:
+            self._conn.execute(
+                f"INSERT INTO account_insights (account_id, date, {', '.join(cols)}, captured_at) "
+                f"VALUES (?, ?, {', '.join('?' for _ in cols)}, ?) "
+                f"ON CONFLICT(account_id, date) DO UPDATE SET "
+                f"{', '.join(f'{c}=excluded.{c}' for c in cols)}, captured_at=excluded.captured_at",
+                (account_id, _today(), *[vals[c] for c in cols], _now()),
+            )
+
+    def account_kpi(self, days: int = 30) -> dict:
+        """Everything for the KPI tab: per-account latest + growth + series + totals."""
+        cutoff = (datetime.now(_TZ).replace(tzinfo=None)
+                  - timedelta(days=days)).date().isoformat()
+        accounts = [a for a in self.list_accounts() if a.get("status") != "archived"]
+        with self._lock:
+            rows = [dict(r) for r in self._conn.execute(
+                "SELECT * FROM account_insights WHERE date >= ? ORDER BY date", (cutoff,)
+            ).fetchall()]
+        by_acc: dict = {}
+        for r in rows:
+            by_acc.setdefault(r["account_id"], []).append(r)
+
+        per_account, totals = [], {"followers": 0, "profile_views": 0, "clicks": 0,
+                                   "likes": 0, "replies": 0, "reposts": 0, "quotes": 0}
+        follower_by_date: dict = {}
+        for a in accounts:
+            snaps = by_acc.get(a["id"], [])
+            latest = snaps[-1] if snaps else {}
+            first = snaps[0] if snaps else {}
+            prev = snaps[-2] if len(snaps) > 1 else first
+            followers = latest.get("followers", 0)
+            demo = self.get_setting(f"demographics:{a['id']}", "")
+            try:
+                import json as _json
+                demo = _json.loads(demo) if demo else None
+            except Exception:  # noqa: BLE001
+                demo = None
+            per_account.append({
+                "id": a["id"],
+                "account": a.get("handle") or a.get("name") or f"acc {a['id']}",
+                "followers": followers,
+                "followers_delta_day": followers - (prev.get("followers", followers) or followers),
+                "followers_delta_period": followers - (first.get("followers", followers) or followers),
+                "profile_views": latest.get("profile_views", 0),
+                "clicks": latest.get("clicks", 0),
+                "likes": latest.get("likes", 0),
+                "replies": latest.get("replies", 0),
+                "reposts": latest.get("reposts", 0),
+                "quotes": latest.get("quotes", 0),
+                "views_series": [{"date": s["date"], "value": s.get("profile_views", 0)} for s in snaps],
+                "followers_series": [{"date": s["date"], "value": s.get("followers", 0)} for s in snaps],
+                "demographics": demo,
+                "demo_locked": followers < 100,
+                "demo_needed": max(0, 100 - followers),
+            })
+            for k in totals:
+                totals[k] += latest.get(k, 0)
+            for s in snaps:
+                follower_by_date[s["date"]] = follower_by_date.get(s["date"], 0) + s.get("followers", 0)
+        per_account.sort(key=lambda x: x["followers"], reverse=True)
+        follower_series = [{"date": d, "value": follower_by_date[d]}
+                           for d in sorted(follower_by_date)]
+        return {
+            "totals": totals,
+            "engagement": totals["likes"] + totals["replies"] + totals["reposts"] + totals["quotes"],
+            "accounts": per_account,
+            "follower_series": follower_series,
+            "updated_age": self.setting_age_seconds("account_insights_last"),
+        }
 
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
         with self._lock, self._conn:

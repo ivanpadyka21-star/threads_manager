@@ -100,10 +100,11 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", followups: "nav.followups", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", kpi: "nav.kpi", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", followups: "nav.followups", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
+  if (name === "kpi") loadKPI();
   if (name === "accounts") loadAccounts();
   if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
   if (name === "studio") loadStudio();
@@ -700,6 +701,115 @@ if (wuRun) wuRun.addEventListener("click", async () => {
       if (pending > 0 || ++tries > 30) { clearInterval(poll); wuRun.disabled = false; wuRun.textContent = lbl; }
     }, 3000);
   } catch (err) { toast(String(err), "error", 6000); wuRun.disabled = false; wuRun.textContent = lbl; }
+});
+
+// --- KPI (account growth) --------------------------------------------------
+function kpiHeroCard(value, label, icon, c1, c2) {
+  const card = el("div", { class: "kpi-hc" });
+  card.style.setProperty("--c1", c1); card.style.setProperty("--c2", c2);
+  const v = el("b", {});
+  card.append(el("span", { class: "kpi-hc-i", text: icon }), v,
+    el("span", { class: "kpi-hc-l", text: label }));
+  countUp(v, value || 0);
+  return card;
+}
+function deltaBadge(n) {
+  const cls = n > 0 ? "up" : n < 0 ? "down" : "flat";
+  const sign = n > 0 ? "▲ +" : n < 0 ? "▼ " : "= ";
+  return el("span", { class: "kpi-delta " + cls, text: sign + Math.abs(n) });
+}
+function sparkline(series, color) {
+  const vals = (series || []).map(s => s.value);
+  if (vals.length < 2 || !vals.some(v => v > 0)) return el("div", { class: "kpi-spark-empty" });
+  return areaChart(vals, { w: 240, h: 46, color });
+}
+async function loadKPI() {
+  let d; try { d = await api("/api/kpi"); } catch { return; }
+  // hero aggregate cards
+  const hero = $("#kpi-hero-cards"); if (hero) {
+    hero.innerHTML = "";
+    hero.append(
+      kpiHeroCard(d.totals.followers, t("kpi.followers"), "👥", "#ff2e7e", "#b14bff"),
+      kpiHeroCard(d.totals.profile_views, t("kpi.pviews"), "👁", "#7ee7ff", "#3b82f6"),
+      kpiHeroCard(d.engagement, t("kpi.engagement"), "🔥", "#b14bff", "#22d3c5"),
+      kpiHeroCard(d.totals.clicks, t("kpi.clicks"), "🔗", "#ffb020", "#ff2e7e"));
+  }
+  const upd = $("#kpi-updated");
+  if (upd) upd.textContent = d.updated_age == null ? t("kpi.never") : t("kpi.updated").replace("{ago}", fmtAgo(d.updated_age));
+
+  // follower growth chart
+  const g = $("#kpi-growth"); if (g) {
+    g.innerHTML = "";
+    const series = d.follower_series || [];
+    const panel = el("div", { class: "panel" });
+    panel.append(el("div", { class: "panel-head" }, el("h3", { text: t("kpi.growth") })));
+    const vals = series.map(s => s.value);
+    if (vals.length >= 2 && vals.some(v => v > 0)) panel.append(areaChart(vals, { color: "#ff2e7e", h: 150 }));
+    else panel.append(el("div", { class: "kpi-growth-hint", text: t("kpi.growth_soon") }));
+    g.append(panel);
+  }
+
+  // per-account cards
+  const wrap = $("#kpi-accounts"); if (!wrap) return;
+  wrap.innerHTML = "";
+  (d.accounts || []).forEach((a, i) => {
+    const card = el("div", { class: "kpi-card" });
+    card.append(el("div", { class: "kpi-card-top" },
+      el("span", { class: "kpi-rank", text: "#" + (i + 1) }),
+      el("span", { class: "kpi-h", text: "@" + (a.account || "").replace(/^@/, "") })));
+    // followers big + delta
+    const fwrap = el("div", { class: "kpi-foll" });
+    const fb = el("b", {}); countUp(fb, a.followers || 0);
+    fwrap.append(fb, el("span", { class: "kpi-foll-l", text: t("kpi.followers") }), deltaBadge(a.followers_delta_period || 0));
+    card.append(fwrap);
+    // metric row
+    card.append(el("div", { class: "kpi-metrics" },
+      kpiMini("👁", a.profile_views, t("kpi.pviews")),
+      kpiMini("🔗", a.clicks, t("kpi.clicks")),
+      kpiMini("❤", a.likes, t("col.likes")),
+      kpiMini("💬", a.replies, t("col.replies"))));
+    // profile-views sparkline
+    card.append(el("div", { class: "kpi-spark" }, sparkline(a.views_series, "#7ee7ff")));
+    // demographics or locked
+    card.append(a.demo_locked ? kpiDemoLocked(a) : kpiDemo(a.demographics));
+    wrap.append(card);
+  });
+}
+function kpiMini(icon, val, label) {
+  return el("div", { class: "kpi-mini" },
+    el("span", { class: "kpi-mini-i", text: icon }),
+    el("b", { text: fmtNum(val || 0) }),
+    el("span", { class: "kpi-mini-l", text: label }));
+}
+function kpiDemoLocked(a) {
+  const box = el("div", { class: "kpi-demo locked" });
+  const pct = Math.min(100, Math.round((a.followers || 0)));
+  box.append(el("div", { class: "kpi-demo-h", text: "🔒 " + t("kpi.demo.locked") }));
+  const track = el("div", { class: "kpi-demo-track" });
+  track.append(el("div", { class: "kpi-demo-fill", style: `width:${pct}%` }));
+  box.append(track, el("div", { class: "kpi-demo-sub", text: t("kpi.demo.need").replace("{n}", a.demo_needed) }));
+  return box;
+}
+function kpiDemo(demo) {
+  const box = el("div", { class: "kpi-demo" });
+  if (!demo) { box.append(el("div", { class: "kpi-demo-sub", text: t("kpi.demo.none") })); return box; }
+  const total = Object.values(demo).reduce((s, v) => s + v, 0) || 1;
+  const male = (demo.M || demo.male || 0), female = (demo.F || demo.female || 0);
+  const mp = Math.round(male / total * 100), fp = Math.round(female / total * 100);
+  box.append(el("div", { class: "kpi-demo-h", text: "👥 " + t("kpi.demo.title") }));
+  const bar = el("div", { class: "kpi-gender" });
+  bar.append(el("div", { class: "kpi-gender-m", style: `width:${mp}%`, title: `♂ ${mp}%` }),
+    el("div", { class: "kpi-gender-f", style: `width:${fp}%`, title: `♀ ${fp}%` }));
+  box.append(bar, el("div", { class: "kpi-demo-sub", text: `♂ ${mp}% · ♀ ${fp}%` }));
+  return box;
+}
+const kpiRefreshBtn = $("#kpi-refresh");
+if (kpiRefreshBtn) kpiRefreshBtn.addEventListener("click", async () => {
+  kpiRefreshBtn.disabled = true; const lbl = kpiRefreshBtn.textContent; kpiRefreshBtn.textContent = t("kpi.refreshing");
+  try {
+    await jpost("/api/kpi/refresh", {});
+    setTimeout(async () => { await loadKPI(); kpiRefreshBtn.disabled = false; kpiRefreshBtn.textContent = lbl; }, 6000);
+  } catch { kpiRefreshBtn.disabled = false; kpiRefreshBtn.textContent = lbl; }
 });
 
 // --- Follow-ups (auto-comment under our own posts, no spam) ----------------
@@ -1937,7 +2047,7 @@ setInterval(() => {
 // auto-refreshes insights). Numbers update instantly (no re-count) on live pulses.
 setInterval(async () => {
   if (isTyping()) return;
-  const live = { dashboard: loadDashGoals, stats: loadStats, daily: loadDaily, drops: loadDrops, followups: loadFollowups };
+  const live = { dashboard: loadDashGoals, stats: loadStats, daily: loadDaily, drops: loadDrops, followups: loadFollowups, kpi: loadKPI };
   const fn = live[currentTab];
   if (!fn) return;
   window.__liveRefresh = true;

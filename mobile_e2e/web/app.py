@@ -640,6 +640,24 @@ def create_app(
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202
 
+    # -- account KPI (growth, profile views, clicks, demographics) ----------
+    @app.get("/api/kpi")
+    def kpi_get():
+        days = request.args.get("days", default=30, type=int)
+        return jsonify(db.account_kpi(days=days))
+
+    @app.post("/api/kpi/refresh")
+    def kpi_refresh():
+        def _work():
+            try:
+                from mobile_e2e.web.kpi import refresh_account_insights
+                refresh_account_insights(db)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("kpi.error", str(exc)[:200], None, level="info")
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
     @app.get("/api/followups/stats")
     def followups_stats():
         days = request.args.get("days", default=14, type=int)
