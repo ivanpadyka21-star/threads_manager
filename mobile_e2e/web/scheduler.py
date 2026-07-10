@@ -38,12 +38,24 @@ class PostScheduler:
         self._stop.set()
 
     def _loop(self) -> None:
-        # Run one tick immediately, then every interval.
+        # Run one tick immediately, then every interval. Also refresh live post
+        # metrics roughly every 10 minutes so views/comments climb on their own.
+        metrics_every = max(1, int(600 / max(1, self._interval)))
+        i = 0
         while True:
             try:
                 self.tick()
             except Exception as exc:  # noqa: BLE001 - never let the loop die
                 LOG.warning("scheduler tick error: %s", exc)
+            if i % metrics_every == 0:
+                try:
+                    from mobile_e2e.web.strategy import refresh_metrics
+                    n = refresh_metrics(self._store, limit=120)
+                    if n:
+                        LOG.info("auto-refreshed metrics for %s posts", n)
+                except Exception as exc:  # noqa: BLE001
+                    LOG.warning("metrics refresh error: %s", exc)
+            i += 1
             if self._stop.wait(self._interval):
                 break
 

@@ -701,6 +701,7 @@ if (wuRun) wuRun.addEventListener("click", async () => {
 });
 
 // --- Drops (campaigns with a goal + evaluation) ----------------------------
+const expandedDrops = new Set();  // remember which drops are expanded across live refreshes
 function miniGoal(cur, target, pct, label, cls) {
   const p = pct == null ? 0 : Math.min(100, pct);
   const row = el("div", { class: "dg-row" });
@@ -708,9 +709,10 @@ function miniGoal(cur, target, pct, label, cls) {
     el("span", { class: "dg-l", text: label }),
     el("span", { class: "dg-v " + (pct >= 100 ? "hit" : ""), text: `${fmtNum(cur)} / ${fmtNum(target)} · ${pct == null ? "—" : pct + "%"}` })));
   const track = el("div", { class: "dg-track" });
-  const fill = el("div", { class: "dg-fill " + cls }); fill.style.width = "0%";
+  const fill = el("div", { class: "dg-fill " + cls });
   track.append(fill); row.append(track);
-  setTimeout(() => { fill.style.width = p + "%"; }, 60);
+  if (window.__liveRefresh) { fill.style.transition = "none"; fill.style.width = p + "%"; }
+  else { fill.style.width = "0%"; setTimeout(() => { fill.style.width = p + "%"; }, 60); }
   return row;
 }
 function renderDropCard(d) {
@@ -742,11 +744,12 @@ function renderDropCard(d) {
   if (d.posts && d.posts.length) {
     const share = d.goal_views && d.posts.length ? d.goal_views / d.posts.length : null;
     const okCount = d.posts.filter(p => share ? p.views >= share : p.views >= (d.avg_views || 0)).length;
+    const open = expandedDrops.has(d.id);
     const toggle = el("button", { class: "drop-toggle" },
-      el("span", { class: "dt-arrow", text: "▸" }),
+      el("span", { class: "dt-arrow", text: open ? "▾" : "▸" }),
       el("span", { text: tf("drop.posts", { n: d.posts.length }) }),
       el("span", { class: "dt-ok", text: `✅ ${okCount} · ⚠️ ${d.posts.length - okCount}` }));
-    const list = el("div", { class: "drop-posts hidden" });
+    const list = el("div", { class: "drop-posts" + (open ? "" : " hidden") });
     d.posts.forEach(p => {
       const ok = share ? p.views >= share : p.views >= (d.avg_views || 0);
       list.append(el("div", { class: "dp " + (ok ? "ok" : "bad") },
@@ -760,8 +763,9 @@ function renderDropCard(d) {
         el("span", { class: "dp-text", title: p.text, text: p.text })));
     });
     toggle.addEventListener("click", () => {
-      list.classList.toggle("hidden");
-      toggle.querySelector(".dt-arrow").textContent = list.classList.contains("hidden") ? "▸" : "▾";
+      const hidden = list.classList.toggle("hidden");
+      toggle.querySelector(".dt-arrow").textContent = hidden ? "▸" : "▾";
+      if (hidden) expandedDrops.delete(d.id); else expandedDrops.add(d.id);
     });
     card.append(toggle, list);
   }
@@ -1079,8 +1083,9 @@ const STAT_COLORS = ["#ff2e7e", "#b14bff", "#22d3c5", "#3b82f6", "#ffb020"];
 let statsData = null;
 function fmtNum(v) { return Math.round(v).toLocaleString("ru-RU"); }
 function countUp(node, target, { dur = 950, dec = 0 } = {}) {
-  const start = performance.now();
   const fmt = v => dec ? v.toFixed(dec) : fmtNum(v);
+  if (window.__liveRefresh) { node.textContent = fmt(target); return; }  // instant on live refresh
+  const start = performance.now();
   (function tick(now) {
     const p = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - p, 3);
     node.textContent = fmt(target * e);
@@ -1097,9 +1102,9 @@ function progressRing(pct, { size = 118, stroke = 11, c1 = "#b14bff", c2 = "#22d
   defs.append(g); s.append(defs);
   s.append(svg("circle", { cx: size / 2, cy: size / 2, r, fill: "none", stroke: "rgba(255,255,255,.08)", "stroke-width": stroke }));
   const fg = svg("circle", { cx: size / 2, cy: size / 2, r, fill: "none", stroke: `url(#${gid})`, "stroke-width": stroke, "stroke-linecap": "round", "stroke-dasharray": circ.toFixed(1), "stroke-dashoffset": circ.toFixed(1), transform: `rotate(-90 ${size / 2} ${size / 2})` });
-  fg.style.transition = "stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)";
   s.append(fg);
-  setTimeout(() => fg.setAttribute("stroke-dashoffset", off.toFixed(1)), 70);
+  if (window.__liveRefresh) { fg.setAttribute("stroke-dashoffset", off.toFixed(1)); }
+  else { fg.style.transition = "stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)"; setTimeout(() => fg.setAttribute("stroke-dashoffset", off.toFixed(1)), 70); }
   return s;
 }
 function goalCard({ title, cur, target, unit, sub, c1, c2 }) {
@@ -1680,6 +1685,17 @@ setInterval(() => {
   if (currentTab === "analytics" && $("#analytics-auto") && $("#analytics-auto").checked && !isTyping())
     loadAnalytics(false);
 }, 4000);
+
+// Real-time: keep the current data tab live (metrics climb on their own, server
+// auto-refreshes insights). Numbers update instantly (no re-count) on live pulses.
+setInterval(async () => {
+  if (isTyping()) return;
+  const live = { dashboard: loadDashGoals, stats: loadStats, daily: loadDaily, drops: loadDrops };
+  const fn = live[currentTab];
+  if (!fn) return;
+  window.__liveRefresh = true;
+  try { await fn(); } catch (e) { /* ignore */ } finally { window.__liveRefresh = false; }
+}, 20000);
 
 // --- runs (workflow) -------------------------------------------------------
 let polling = null;
