@@ -53,12 +53,14 @@ FOLLOWUP_SYSTEM = (
     "warm, a little vulnerable, unashamed, never crude or pornographic, at most one "
     "emoji. Make him feel there's a real woman on the other side he could be the "
     "one for. Deepen the ORIGINAL post's emotion — do not repeat its wording. "
+    "Write in the language you are told to use — never switch languages. "
     "One or two sentences, under 200 characters. Output ONLY the comment text."
 )
 
 
 def draft_followups(store, account_id: Optional[int] = None, *,
                     min_age_minutes: int = 30, per_run: int = 6,
+                    language: str = "Ukrainian",
                     agent_factory: Optional[Callable[[str], object]] = None,
                     rules: Optional[str] = None) -> dict:
     """Auto-draft ONE thoughtful follow-up per eligible own post (no spam).
@@ -91,8 +93,8 @@ def draft_followups(store, account_id: Optional[int] = None, *,
             f"OWNER RULES (highest priority): {rules}" if rules else "",
             f"Your voice / persona: {persona}" if persona else "",
             f"YOUR original post (a while ago):\n{text}",
-            "Write your single follow-up comment that develops this theme and "
-            "invites men to answer.",
+            f"Write your single follow-up comment STRICTLY in {language} (never any "
+            "other language) that develops this theme and invites men to answer.",
         ] if x)
         try:
             draft = factory(FOLLOWUP_SYSTEM).generate_response(prompt).strip()
