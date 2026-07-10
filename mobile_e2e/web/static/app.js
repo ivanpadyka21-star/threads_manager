@@ -2096,7 +2096,7 @@ setInterval(async () => {
   if (!fn) return;
   window.__liveRefresh = true;
   try { await fn(); } catch (e) { /* ignore */ } finally { window.__liveRefresh = false; }
-}, 20000);
+}, 12000);
 
 // --- runs (workflow) -------------------------------------------------------
 let polling = null;

@@ -480,13 +480,18 @@ def analyze_legend(store, legend: dict, agent_factory=None) -> Optional[str]:
     return note
 
 
-def refresh_metrics(store, limit: int = 80) -> int:
+def refresh_metrics(store, limit: int = 80, recent_hours: Optional[int] = None) -> int:
     """Fetch fresh views/likes/replies for published posts (per-account creds).
 
     Best-effort: stops quietly if Threads isn't configured, skips posts that
     error. Returns the number of posts updated. This is what makes our OWN
     performance data current so the next plan learns from reality.
+
+    ``recent_hours`` limits the refresh to posts published/updated within that
+    window — the ACTIVE posts whose numbers actually move — so the dashboard can
+    be refreshed near-real-time cheaply, without re-polling old, settled posts.
     """
+    from datetime import datetime, timedelta
     from mobile_e2e.web import threads_client
     try:
         store.backfill_published_ids()
@@ -495,8 +500,13 @@ def refresh_metrics(store, limit: int = 80) -> int:
     # Our own auto-replies must NOT inflate the comment stats — only real people
     # count. Subtract the follow-ups we published on each post from its replies.
     own_followups = store.own_followup_counts()
+    tasks = store.published_tasks(limit=limit)
+    if recent_hours:
+        cutoff = (datetime.now(_TZ).replace(tzinfo=None)
+                  - timedelta(hours=recent_hours)).isoformat(timespec="seconds")
+        tasks = [t for t in tasks if (t.get("updated_at") or "") >= cutoff]
     updated = 0
-    for task in store.published_tasks(limit=limit):
+    for task in tasks:
         account = store.get_account(task["account_id"]) if task.get("account_id") else None
         creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
         try:

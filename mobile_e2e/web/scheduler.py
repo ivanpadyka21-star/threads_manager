@@ -40,7 +40,11 @@ class PostScheduler:
     def _loop(self) -> None:
         # Run one tick immediately, then every interval. Also refresh live post
         # metrics roughly every 10 minutes so views/comments climb on their own.
-        metrics_every = max(1, int(600 / max(1, self._interval)))
+        # Two-tier metric refresh so the dashboard is near-real-time without
+        # hammering the API: ACTIVE posts (last 24h) every ~2.5 min; a full
+        # backfill of all posts every ~20 min.
+        recent_every = max(1, int(150 / max(1, self._interval)))
+        metrics_every = max(1, int(1200 / max(1, self._interval)))
         i = 0
         while True:
             # Auto-reply cadence depends on intensity: 'max' mode fires every
@@ -56,12 +60,14 @@ class PostScheduler:
                 self._store.mark_heartbeat("scheduler_heartbeat")
             except Exception:  # noqa: BLE001
                 pass
-            if i % metrics_every == 0:
+            if i % recent_every == 0:
                 try:
                     from mobile_e2e.web.strategy import refresh_metrics
-                    n = refresh_metrics(self._store, limit=120)
-                    if n:
-                        LOG.info("auto-refreshed metrics for %s posts", n)
+                    # Full sweep on the slow tick, active-only on the fast tick.
+                    if i % metrics_every == 0:
+                        refresh_metrics(self._store, limit=200)
+                    else:
+                        refresh_metrics(self._store, limit=60, recent_hours=24)
                 except Exception as exc:  # noqa: BLE001
                     LOG.warning("metrics refresh error: %s", exc)
             if i % followups_every == 0:
