@@ -381,6 +381,19 @@ def test_task_result_stored(store):
     assert store.get_task(task["id"])["result"] == "generated draft"
 
 
+def test_legends_threshold_and_note(store):
+    acc = store.add_account(name="A", handle="@a")
+    big = store.add_task(account_id=acc["id"], title="legend")
+    store.set_task_published(big["id"], "999"); store.set_task_metrics(big["id"], views=4180, likes=240, replies=74)
+    small = store.add_task(account_id=acc["id"], title="meh")
+    store.set_task_published(small["id"], "1"); store.set_task_metrics(small["id"], views=120, likes=0, replies=0)
+    legs = store.legends(min_views=1000)
+    assert len(legs) == 1 and legs[0]["views"] == 4180 and legs[0]["reply_rate"] == 17.7
+    assert legs[0]["account"] == "@a" and legs[0]["note"] == ""
+    store.set_setting("legend_note:999", "легенда на эмоциях")
+    assert store.legends(min_views=1000)[0]["note"] == "легенда на эмоциях"
+
+
 def test_daily_reports_aggregates_by_day(store):
     acc = store.add_account(name="A", handle="@a")
     t1 = store.add_task(account_id=acc["id"], title="x")

@@ -100,7 +100,7 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", drops: "nav.drops", daily: "nav.daily", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
@@ -110,6 +110,7 @@ function renderTab(name) {
   if (name === "warmup") loadWarmup();
   if (name === "drops") loadDrops();
   if (name === "daily") loadDaily();
+  if (name === "legends") loadLegends();
   if (name === "calendar") loadCalendar();
   if (name === "stats") loadStats();
   if (name === "analytics") loadAnalytics(true);
@@ -816,6 +817,43 @@ if (dropRun) dropRun.addEventListener("click", async () => {
     }, 3000);
   } catch (err) { toast(String(err), "error", 6000); dropRun.disabled = false; dropRun.textContent = lbl; }
 });
+
+// --- Hall of Legends -------------------------------------------------------
+function legendMetric(v, l) { return el("div", { class: "lg-metric" }, el("b", { class: "lg-mv", text: fmtNum(v) }), el("span", { class: "lg-ml", text: l })); }
+function renderLegendCard(lg, rank, hero) {
+  const card = el("div", { class: "panel legend-card" + (hero ? " hero" : "") });
+  card.append(el("div", { class: "lg-rank", text: hero ? "👑" : "#" + rank }));
+  card.append(el("div", { class: "lg-head" },
+    el("span", { class: "lg-acc", text: lg.account }),
+    el("span", { class: "lg-when", text: lg.when })));
+  card.append(el("div", { class: "lg-text", text: lg.text }));
+  const m = el("div", { class: "lg-metrics" },
+    legendMetric(lg.views, "👁 " + t("col.views")),
+    legendMetric(lg.replies, "💬 " + t("col.replies")),
+    legendMetric(lg.likes, "❤ " + t("col.likes")),
+    el("div", { class: "lg-metric" }, el("b", { class: "lg-mv grad-t", text: lg.reply_rate + "‰" }), el("span", { class: "lg-ml", text: t("stats.rr") })));
+  card.append(m);
+  const noteBox = el("div", { class: "lg-note" });
+  if (lg.note) noteBox.append(el("div", { class: "lg-note-h", text: "🧠 " + t("leg.why") }), el("div", { class: "lg-note-t", text: lg.note }));
+  else noteBox.append(el("button", { class: "mini", text: t("leg.explain"), onclick: async (e) => {
+    e.target.disabled = true; e.target.textContent = t("leg.thinking");
+    await jpost("/api/legends/" + encodeURIComponent(lg.published_id) + "/analyze", {});
+    let n = 0; const poll = setInterval(async () => {
+      const rows = await api("/api/legends");
+      const fresh = rows.find(x => x.published_id === lg.published_id);
+      if ((fresh && fresh.note) || ++n > 30) { clearInterval(poll); loadLegends(); }
+    }, 2500);
+  } }));
+  card.append(noteBox);
+  return card;
+}
+async function loadLegends() {
+  const wrap = $("#legends-list"); if (!wrap) return;
+  const rows = await api("/api/legends");
+  wrap.innerHTML = "";
+  if (!rows.length) { wrap.append(emptyState(t("leg.empty"), t("leg.empty.hint"), "🏆")); return; }
+  rows.forEach((lg, i) => wrap.append(renderLegendCard(lg, i + 1, i === 0)));
+}
 
 // --- Daily close-out -------------------------------------------------------
 function dayHeading(dateStr) {

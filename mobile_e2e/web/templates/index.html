@@ -25,6 +25,7 @@
         <button class="nav-item" data-tab="warmup"><span>🔥</span> <em data-i18n="nav.warmup">Прогрев</em></button>
         <button class="nav-item" data-tab="drops"><span>🚀</span> <em data-i18n="nav.drops">Заливы</em></button>
         <button class="nav-item" data-tab="daily"><span>📅</span> <em data-i18n="nav.daily">Подсчёт дня</em></button>
+        <button class="nav-item" data-tab="legends"><span>🏆</span> <em data-i18n="nav.legends">Зал легенд</em></button>
         <button class="nav-item" data-tab="calendar"><span>▦</span> <em data-i18n="nav.calendar">Календарь</em></button>
         <button class="nav-item" data-tab="runs"><span>▶</span> <em data-i18n="nav.runs">Запуски</em></button>
         <button class="nav-item" data-tab="stats"><span>▤</span> <em data-i18n="nav.stats">Статистика</em></button>
@@ -281,6 +282,17 @@
           <div class="panel-head" id="cal-controls"></div>
           <div id="calendar"></div>
         </div>
+      </section>
+
+      <!-- Hall of Legends -->
+      <section class="tab" id="tab-legends">
+        <div class="legends-hero">
+          <div class="lh-glow"></div>
+          <p class="lh-eyebrow" data-i18n="leg.eyebrow">🏆 ЗАЛ ЛЕГЕНД</p>
+          <h1 class="lh-title" data-i18n="leg.title">Посты, которые <span class="grad-t">разьебали</span></h1>
+          <p class="lh-sub" data-i18n="leg.sub">Планка легенды: от 1 000 просмотров. Здесь то, что зашло на эмоциях — и почему. Стратег объясняет каждую легенду.</p>
+        </div>
+        <div id="legends-list" class="legends-list"></div>
       </section>
 
       <!-- Daily close-out -->

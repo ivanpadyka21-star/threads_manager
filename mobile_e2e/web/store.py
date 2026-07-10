@@ -1358,6 +1358,32 @@ class Store:
                      "target_comments": int(self.get_setting("drop_goal_comments") or 0)},
         }
 
+    def legends(self, min_views: int = 1000, limit: int = 12) -> List[dict]:
+        """Legendary posts — those that cleared the quality bar (views >= min).
+        Each carries its metrics and a stored strategist note (why it's a legend)."""
+        def _clean(txt: str) -> str:
+            return re.sub(r"^\[published [^\]]*\]\s*", "", (txt or "")).replace("\n", " ")
+
+        hands = {a["id"]: a["handle"] for a in self.list_accounts()}
+        out = []
+        for t in sorted(self.published_tasks(limit=500), key=lambda x: x.get("views") or 0, reverse=True):
+            v = t.get("views") or 0
+            if v < min_views:
+                break
+            pid = t.get("published_id") or ""
+            out.append({
+                "published_id": pid, "task_id": t["id"], "views": v,
+                "replies": t.get("replies") or 0, "likes": t.get("likes") or 0,
+                "reply_rate": round((t.get("replies") or 0) / v * 1000, 1) if v else 0.0,
+                "account": hands.get(t.get("account_id"), ""),
+                "when": (t.get("updated_at") or "")[:10],
+                "text": _clean(t.get("result") or t.get("title")),
+                "note": self.get_setting(f"legend_note:{pid}", "") if pid else "",
+            })
+            if len(out) >= limit:
+                break
+        return out
+
     def daily_reports(self, days: int = 14) -> List[dict]:
         """Per-day close-out: posts published that day and their metrics, per
         account, best post, drops created that day, and warm-up actions.

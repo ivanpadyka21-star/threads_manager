@@ -142,6 +142,25 @@ def create_app(
     def daily_reports():
         return jsonify(db.daily_reports(days=int(request.args.get("days", 14))))
 
+    @app.get("/api/legends")
+    def legends():
+        return jsonify(db.legends(min_views=int(request.args.get("min", 1000))))
+
+    @app.post("/api/legends/<published_id>/analyze")
+    def analyze_legend_route(published_id):
+        from mobile_e2e.web.strategy import analyze_legend
+        legend = next((l for l in db.legends(min_views=1) if l["published_id"] == published_id), None)
+        if not legend:
+            return jsonify({"error": "not found"}), 404
+
+        def _work():
+            try:
+                analyze_legend(db, legend)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("ai.error", f"legend: {exc}"[:200], None, level="info")
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
     @app.get("/api/audit")
     def audit():
         return jsonify(db.list_audit())

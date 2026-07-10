@@ -507,6 +507,32 @@ label.auto input { width: auto; margin: 0; }
 .wu-manual-text { flex: 1; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wu-actions .mini, .wu-manual-row .mini { flex-shrink: 0; }
 
+/* Hall of Legends */
+.grad-t { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.legends-hero { position: relative; text-align: center; padding: 46px 20px 34px; margin-bottom: 22px; overflow: hidden; border-radius: var(--radius-lg); border: 1px solid rgba(255,176,32,.2); background: radial-gradient(120% 100% at 50% -10%, rgba(255,176,32,.1), transparent 60%), radial-gradient(80% 80% at 50% 120%, rgba(177,75,255,.12), transparent 60%); }
+.lh-glow { position: absolute; inset: 0; background: radial-gradient(50% 60% at 50% 0%, rgba(255,46,126,.12), transparent 70%); pointer-events: none; }
+.lh-eyebrow { position: relative; font-family: "JetBrains Mono", monospace; font-size: 13px; letter-spacing: .35em; color: var(--amber); margin: 0 0 14px; }
+.lh-title { position: relative; font-size: clamp(28px,5vw,48px); font-weight: 850; letter-spacing: -1px; margin: 0; }
+.lh-sub { position: relative; color: var(--dim); max-width: 60ch; margin: 16px auto 0; font-size: 15px; }
+.legends-list { display: flex; flex-direction: column; gap: 16px; }
+.legend-card { position: relative; padding: 24px; padding-left: 60px; overflow: hidden; }
+.legend-card.hero { border-color: rgba(255,176,32,.35); box-shadow: var(--shadow), 0 0 0 1px rgba(255,176,32,.15), inset 0 1px 0 rgba(255,255,255,.06); background: linear-gradient(160deg, rgba(255,176,32,.05), var(--panel)); }
+.lg-rank { position: absolute; left: 18px; top: 24px; font: 800 16px "JetBrains Mono", monospace; color: var(--muted); }
+.legend-card.hero .lg-rank { font-size: 26px; }
+.lg-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.lg-acc { font: 700 13px "JetBrains Mono", monospace; color: var(--accent); }
+.lg-when { font: 11.5px "JetBrains Mono", monospace; color: var(--muted); }
+.lg-text { font-size: 15.5px; line-height: 1.5; color: var(--text); }
+.legend-card.hero .lg-text { font-size: 18px; font-weight: 600; }
+.lg-metrics { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 18px; }
+.lg-metric { display: flex; flex-direction: column; gap: 2px; }
+.lg-mv { font-size: 26px; font-weight: 850; letter-spacing: -1px; font-variant-numeric: tabular-nums; line-height: 1; }
+.legend-card.hero .lg-mv { font-size: 34px; }
+.lg-ml { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
+.lg-note { margin-top: 20px; }
+.lg-note-h { font: 700 11px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 8px; }
+.lg-note-t { font-size: 14.5px; line-height: 1.6; color: var(--text); padding: 16px 18px; border-radius: var(--radius-sm); border: 1px solid rgba(177,75,255,.22); background: rgba(177,75,255,.05); white-space: pre-wrap; }
+
 /* Daily close-out */
 .daily-list { display: flex; flex-direction: column; gap: 16px; }
 .day-card { padding: 24px; border-left: 3px solid var(--border-2); }

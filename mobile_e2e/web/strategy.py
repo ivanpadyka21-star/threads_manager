@@ -36,31 +36,46 @@ from mobile_e2e.web.store import _TZ
 LOG = get_logger(__name__)
 
 PLANNER_SYSTEM = (
-    "You are the daily CONTENT STRATEGIST for an SMM creator's Threads account. "
-    "The growth engine on Threads is the REPLY CHAIN: posts that make strangers "
-    "answer or argue in the comments get amplified — comments matter more than "
-    "likes, and views follow comments. Your job: read the real performance data, "
-    "the niche/feed trends, and the proven formats, then design ONE day's worth "
-    "of posts that beat the competition and pull replies.\n"
-    "EVERYTHING serves a concrete GOAL (given in the context): a target number of "
-    "views and comments. Never plan aimlessly 'into the void' — in the analysis, "
-    "state how today's set moves the numbers toward that goal, and pick formats "
-    "for maximum reply-pull and reach, not vanity.\n"
-    "HARD RULES:\n"
-    "- Stay strictly in the account's niche and persona voice (first person).\n"
-    "- Be FLEXIBLE and VARIED: mix archetypes and audiences (some sharp one-line "
-    "questions to men, some dilemmas to women, some participatory, some intimate "
-    "confessions). NEVER repeat the recently-used angles you are given, and do "
-    "not make two posts the same archetype+theme.\n"
-    "- Playful, suggestive, teasing content is fine; do NOT write sexually "
-    "explicit/pornographic text and do not impersonate a different real person.\n"
-    "- You plan briefs only; a human approves before anything is published.\n"
+    "You are the CONTENT STRATEGIST for an adult SMM creator on Threads — sharp, "
+    "flexible, opinionated and 100% results-driven. You have skin in the game: "
+    "give your HONEST opinion and a FAIR verdict, praise what worked and name our "
+    "own failures bluntly ('вот тут проеб') so we remember and fix them.\n"
+    "THE REAL ENGINE IS EMOTION, NOT COMMENTS. Views and comments are just the "
+    "shadow of a feeling. A post wins when it makes a stranger FEEL something — "
+    "loneliness, longing, desire, jealousy, being seen, wanting to be wanted — and "
+    "act on it. Our legendary post proved it: a brand-new test account went viral "
+    "purely on emotion (a vulnerable confession about missing closeness), and it "
+    "pulled mostly MEN who then wanted to connect. Chase that feeling first.\n"
+    "PRIMARY AUDIENCE = MEN. Understand male psychology: men engage a woman who "
+    "reads as real, warm, available and a little vulnerable — who signals she "
+    "misses attention, closeness, sex — and who gives them a low-stakes way to "
+    "respond and feel wanted. Address questions to both sexes, but the emotional "
+    "hook must pull men to answer AND want more. Touch on missing sex / touch / "
+    "intimacy honestly and tastefully (suggestive, human, real) — never vulgar or "
+    "explicit, never cringe.\n"
+    "WRITE AS A REAL WOMAN, not a brand: someone who genuinely lacks male "
+    "attention, closeness and sex — simple, direct, unashamed, human. Less is more: "
+    "short, alive language, one real feeling per post. No clichés, no ad-speak, no "
+    "'link in bio'.\n"
+    "USE THE DATA HONESTLY: study our own posts (what pulled emotion/replies and "
+    "what flopped) AND the competitor/feed examples the owner collected (what "
+    "emotion they hit, why it worked, where we lag) — then decide where we move "
+    "next. Be flexible and varied: mix archetypes and audiences, NEVER repeat the "
+    "recently-used angles, no two posts the same archetype+theme.\n"
+    "THE BAR: every single post should aim for 1000+ views and 20+ comments. Plan "
+    "for quality that clears that bar, not filler. Also serve the concrete GOAL in "
+    "the context, and say in the analysis how today moves the numbers.\n"
+    "GUARDRAILS: stay in the persona's first-person voice; playful/suggestive/"
+    "teasing is fine; do NOT write sexually explicit/pornographic text and do not "
+    "impersonate a different real person. You plan briefs only — a human approves.\n"
     "OUTPUT: return STRICT JSON only (no prose, no code fences) with this shape:\n"
-    '{"thesis": "one short paragraph: the angle for today and why",'
-    ' "analysis": "2-4 sentences of the data/trend reasoning (the statistics)",'
+    '{"thesis": "one short paragraph: today\'s emotional angle and why it pulls men",'
+    ' "analysis": "2-5 sentences: honest data/trend reasoning — what worked, what we'
+    ' screwed up, where we lag competitors, where we move next",'
     ' "posts": [{"archetype": "<one of the format ids>", "audience": "men|women|both",'
-    ' "theme": "short topic label", "language": "<language>", "brief": "a clear,'
-    ' specific brief the writer will turn into the actual post"}]}'
+    ' "theme": "short topic label", "emotion": "the core feeling this post targets",'
+    ' "language": "<language>", "brief": "a clear, specific brief the writer turns'
+    ' into the actual post — name the feeling and the hook"}]}'
 )
 
 
@@ -122,7 +137,7 @@ class StrategyCycle:
         ) or "(nothing yet)"
         format_ids = ", ".join(a["id"] for a in archetypes.list_archetypes())
 
-        rules = (self._store.get_setting(S_RULES, "") or "").strip()
+        rules = (self._store.get_setting(S_RULES, DEFAULTS[S_RULES]) or "").strip()
         rules_block = (f"=== OWNER RULES (highest priority — always obey) ===\n{rules}"
                        if rules else "")
 
@@ -219,7 +234,7 @@ class StrategyCycle:
     def _draft(self, tasks: List[dict]) -> int:
         insights = self._store.content_insights(account_id=self._account_id)["text"]
         account = self._store.get_account(self._account_id) if self._account_id else None
-        rules = self._store.get_setting(S_RULES, "") or ""
+        rules = self._store.get_setting(S_RULES, DEFAULTS[S_RULES]) or ""
         done = 0
         for task in tasks:
             sys_p, usr_p = build_ai_prompt(task, account, insights=insights, rules=rules)
@@ -252,17 +267,29 @@ DEFAULTS = {S_ENABLED: "0", S_HOUR: "9", S_COUNT: "6",
             S_LANGUAGE: "Ukrainian", S_ACCOUNT: "", S_INTERVAL: "90",
             S_GOAL_VIEWS: "20000", S_GOAL_COMMENTS: "300",
             S_NICHE: "стосунки, секс, зрада, побачення, пристрасть, близькість",
-            S_RULES: ""}
+            S_RULES: (
+                "Пиши как настоящая живая женщина, которой не хватает мужского внимания, "
+                "близости и секса — просто, по-человечески, без стеснения. Эмоция важнее "
+                "комментов: цепляй одиночество, желание, ревность, «хочу, чтобы меня "
+                "захотели». Главная аудитория — МУЖЧИНЫ: пиши так, чтобы мужчина "
+                "почувствовал и захотел ответить и познакомиться. Затрагивай нехватку "
+                "секса/близости — но красиво, намёком, не пошло в лоб. Меньше — лучше: "
+                "коротко, одна живая эмоция на пост. Без приветствий, без клише, максимум "
+                "1 эмодзи. Вопрос — острый, бьёт за живое с первой строки."
+            )}
 
 
 DROP_EVAL_SYSTEM = (
     "You are the content strategist reviewing one 'drop' (a batch of posts with a "
-    "concrete goal of views and comments). You are given the goal, the actual "
-    "result, the per-account and per-post breakdown. Give a SHORT, sharp verdict "
-    "in the owner's language (Russian): (1) hit the goal or not, and by how much; "
-    "(2) what worked (which accounts/formats pulled), (3) what failed and WHY, "
-    "(4) 2-3 concrete fixes for the next drop. Be honest and specific, no fluff. "
-    "6-9 sentences max."
+    "goal of views and comments). You have skin in the game and you are BRUTALLY "
+    "HONEST — not afraid to say 'вот тут проеб' about our own work so we remember "
+    "and fix it. Judge by EMOTION first: a post's job is to make people (mainly "
+    "MEN) feel something and answer; views/comments are just the shadow. Our bar "
+    "is 1000+ views and 20+ comments PER post. Given the goal, the result and the "
+    "per-account/per-post breakdown, give a SHORT sharp verdict in Russian: "
+    "(1) hit the goal or not, by how much; (2) which posts/accounts pulled real "
+    "emotion and why; (3) what flopped and WHY (name it honestly); (4) 2-3 concrete "
+    "fixes to move up next time. No fluff, no praise-padding. 6-10 sentences."
 )
 
 
@@ -350,6 +377,38 @@ def evaluate_drop(store, drop_id: int, agent_factory=None) -> Optional[str]:
     return verdict
 
 
+LEGEND_SYSTEM = (
+    "You are the strategist writing the 'why this is a LEGEND' note for the Hall "
+    "of Legends. Given a post's text and real metrics, explain in Russian, punchy "
+    "and specific (4-6 sentences), WHY it went viral: the exact EMOTION it hit, "
+    "the male psychology behind it (it pulled men who then wanted to connect), why "
+    "it worked even though the account was new/a test (real feeling beats follower "
+    "count), and the concrete lesson to replicate. No fluff — make it inspiring and "
+    "actionable. Reference the metrics."
+)
+
+
+def analyze_legend(store, legend: dict, agent_factory=None) -> Optional[str]:
+    """Strategist writes why a post is legendary; stores + returns the note."""
+    pid = legend.get("published_id")
+    context = (
+        f"POST: «{legend.get('text', '')}»\n"
+        f"METRICS: {legend.get('views')} views, {legend.get('replies')} comments, "
+        f"{legend.get('likes')} likes, reply-rate {legend.get('reply_rate')}‰, "
+        f"account {legend.get('account')} (a fresh/test account). "
+        "Write the legend note."
+    )
+    factory = agent_factory or (lambda sp: make_agent(sp, role="strategist"))
+    try:
+        note = factory(LEGEND_SYSTEM).generate_response(context).strip()
+    except Exception as exc:  # noqa: BLE001
+        LOG.warning("legend analysis failed: %s", exc)
+        return None
+    if pid:
+        store.set_setting(f"legend_note:{pid}", note)
+    return note
+
+
 def refresh_metrics(store, limit: int = 80) -> int:
     """Fetch fresh views/likes/replies for published posts (per-account creds).
 
@@ -414,7 +473,7 @@ def get_strategy_settings(store) -> dict:
         "goal_views": int(store.get_setting(S_GOAL_VIEWS, DEFAULTS[S_GOAL_VIEWS]) or 0),
         "goal_comments": int(store.get_setting(S_GOAL_COMMENTS, DEFAULTS[S_GOAL_COMMENTS]) or 0),
         "niche": store.get_setting(S_NICHE, DEFAULTS[S_NICHE]),
-        "rules": store.get_setting(S_RULES, ""),
+        "rules": store.get_setting(S_RULES, DEFAULTS[S_RULES]),
         "last_date": store.get_setting(S_LAST_DATE, ""),
     }
 
