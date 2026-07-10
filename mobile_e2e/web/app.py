@@ -605,6 +605,7 @@ def create_app(
             "published": published,
             "candidates": len(db.posts_needing_followup(account_id=account_id, limit=50)),
             "auto": str(db.get_setting("followups_auto", "1")) != "0",
+            "autopublish": str(db.get_setting("followups_autopublish", "0")) != "0",
         })
 
     @app.post("/api/followups/auto")
@@ -612,6 +613,12 @@ def create_app(
         on = bool((request.get_json(silent=True) or {}).get("on", True))
         db.set_setting("followups_auto", "1" if on else "0")
         return jsonify({"auto": on})
+
+    @app.post("/api/followups/autopublish")
+    def followups_autopublish():
+        on = bool((request.get_json(silent=True) or {}).get("on", True))
+        db.set_setting("followups_autopublish", "1" if on else "0")
+        return jsonify({"autopublish": on})
 
     @app.post("/api/followups/draft")
     def followups_draft():

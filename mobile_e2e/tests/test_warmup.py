@@ -109,6 +109,27 @@ def test_draft_followups_queues_pending_and_publishes_as_reply(store):
     assert pend[0]["kind"] == "followup"
 
 
+def test_own_followups_excluded_from_comment_stats(store, monkeypatch):
+    """Our own auto-replies must never inflate the reply/comment numbers."""
+    from mobile_e2e.web import strategy, threads_client
+
+    acc = store.add_account(name="A")
+    task = _published_post(store, acc["id"], "Пост із живими коментами", "3001",
+                           age_minutes=90, views=1000)
+    # a follow-up we PUBLISHED on that post (status done → counts as ours)
+    fa = store.add_warmup_action(account_id=acc["id"], kind="followup",
+                                 target_id="3001", target_text="x", draft="y")
+    store.set_warmup_status(fa["id"], "done", published_id="9001")
+    assert store.own_followup_counts() == {"3001": 1}
+
+    # Threads reports 8 replies on the post; 1 of them is ours → 7 real.
+    monkeypatch.setattr(threads_client, "fetch_insights",
+                        lambda pid, creds: {"views": 1000, "likes": 5, "replies": 8})
+    strategy.refresh_metrics(store)
+    fresh = store.get_task(task["id"])
+    assert fresh["replies"] == 7   # 8 reported − 1 of ours = only real people
+
+
 def test_warmup_hands_fresh_live_posts_to_strategist(store, monkeypatch):
     from mobile_e2e.web import feed_source
     acc = store.add_account(name="A")

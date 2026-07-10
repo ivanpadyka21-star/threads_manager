@@ -61,12 +61,17 @@ class PostScheduler:
             if i % followups_every == 0:
                 try:
                     if str(self._store.get_setting("followups_auto", "1")) not in ("0", "false", ""):
-                        from mobile_e2e.web.warmup import draft_followups
+                        from mobile_e2e.web.warmup import draft_followups, autopublish_followups
                         r = draft_followups(self._store, per_run=6)
                         if r.get("drafted"):
                             LOG.info("auto-drafted %s follow-ups", r["drafted"])
+                        # Owner opted in to auto-publish: send a few, gently.
+                        if str(self._store.get_setting("followups_autopublish", "0")) not in ("0", "false", ""):
+                            p = autopublish_followups(self._store, max_per_pass=3)
+                            if p.get("published"):
+                                LOG.info("auto-published %s follow-ups", p["published"])
                 except Exception as exc:  # noqa: BLE001
-                    LOG.warning("followup draft error: %s", exc)
+                    LOG.warning("followup auto error: %s", exc)
             i += 1
             if self._stop.wait(self._interval):
                 break

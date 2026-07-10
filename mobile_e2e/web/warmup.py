@@ -254,6 +254,31 @@ class WarmupAgent:
             return ""
 
 
+def autopublish_followups(store, max_per_pass: int = 3) -> dict:
+    """Gently publish a few approved follow-ups (owner opted in via a setting).
+
+    Deliberately small and spread — at most ``max_per_pass`` per call and never
+    two for the same account in one pass — so it never trips Meta's abuse guard.
+    Best-effort: a failure on one follow-up is skipped, not fatal.
+    """
+    published, used_accounts = 0, set()
+    for a in store.pending_followups(limit=50):
+        if published >= max_per_pass:
+            break
+        acc = a.get("account_id")
+        if acc in used_accounts:
+            continue  # one per account per pass — natural spacing
+        try:
+            publish_reply_action(store, a["id"])
+            published += 1
+            used_accounts.add(acc)
+        except Exception as exc:  # noqa: BLE001 - skip this one, try others next pass
+            LOG.warning("followup autopublish skipped #%s: %s", a["id"], exc)
+    if published:
+        store.log("followup.autopublish", f"{published} follow-ups", None)
+    return {"published": published}
+
+
 def publish_reply_action(store, action_id: int) -> str:
     """Publish an approved reply action to Threads (best-effort).
 

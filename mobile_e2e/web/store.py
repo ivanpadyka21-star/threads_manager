@@ -1037,6 +1037,30 @@ class Store:
             rows = self._conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
+    def own_followup_counts(self) -> dict:
+        """{parent_published_id: how many of OUR OWN follow-ups we published on it}.
+
+        Used to keep the comment stats honest: our own auto-replies must never
+        pad the reply/comment numbers — only real people count.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT target_id, COUNT(*) c FROM warmup_actions "
+                "WHERE kind = 'followup' AND status = 'done' "
+                "AND target_id != '' AND target_id IS NOT NULL GROUP BY target_id"
+            ).fetchall()
+        return {r["target_id"]: r["c"] for r in rows}
+
+    def pending_followups(self, limit: int = 50) -> List[dict]:
+        """Approved-but-unpublished follow-ups, oldest first (for gentle auto-publish)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM warmup_actions WHERE kind = 'followup' AND status = 'pending' "
+                "AND target_id != '' AND target_id IS NOT NULL "
+                "ORDER BY created_at ASC LIMIT ?", (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def set_warmup_draft(self, action_id: int, draft: str) -> None:
         with self._lock, self._conn:
             self._conn.execute(

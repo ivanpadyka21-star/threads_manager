@@ -717,6 +717,17 @@ async function loadFollowups() {
       });
     }
   }
+  const autopub = $("#fu-autopub");
+  if (autopub) {
+    if (!window.__liveRefresh || document.activeElement !== autopub) autopub.checked = d.autopublish === true;
+    if (!autopub.dataset.bound) {
+      autopub.dataset.bound = "1";
+      autopub.addEventListener("change", async () => {
+        await jpost("/api/followups/autopublish", { on: autopub.checked }).catch(() => {});
+        toast(autopub.checked ? t("fu.autopub_on") : t("fu.autopub_off"), "success", 2500);
+      });
+    }
+  }
   const cand = $("#fu-cand");
   if (cand) cand.textContent = d.candidates ? t("fu.cand").replace("{n}", d.candidates) : t("fu.cand0");
   const wrap = $("#followups-list"); if (!wrap) return; wrap.innerHTML = "";

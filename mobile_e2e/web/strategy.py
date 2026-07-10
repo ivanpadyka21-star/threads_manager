@@ -421,13 +421,17 @@ def refresh_metrics(store, limit: int = 80) -> int:
         store.backfill_published_ids()
     except Exception:  # noqa: BLE001
         pass
+    # Our own auto-replies must NOT inflate the comment stats — only real people
+    # count. Subtract the follow-ups we published on each post from its replies.
+    own_followups = store.own_followup_counts()
     updated = 0
     for task in store.published_tasks(limit=limit):
         account = store.get_account(task["account_id"]) if task.get("account_id") else None
         creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
         try:
             m = threads_client.fetch_insights(task["published_id"], creds)
-            store.set_task_metrics(task["id"], m["views"], m["likes"], m["replies"])
+            real_replies = max(0, m["replies"] - own_followups.get(task["published_id"], 0))
+            store.set_task_metrics(task["id"], m["views"], m["likes"], real_replies)
             updated += 1
         except threads_client.ThreadsNotConfigured:
             break  # not set up at all — no point continuing
