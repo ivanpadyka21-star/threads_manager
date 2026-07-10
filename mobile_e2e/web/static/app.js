@@ -703,7 +703,88 @@ if (wuRun) wuRun.addEventListener("click", async () => {
 });
 
 // --- Follow-ups (auto-comment under our own posts, no spam) ----------------
+function fuStatCard(value, label, cls, dec) {
+  const card = el("div", { class: "fu-stat " + (cls || "") });
+  const v = el("b", {}); card.append(v, el("span", { class: "fu-stat-l", text: label }));
+  countUp(v, value || 0, { dec: dec || 0 });
+  return card;
+}
+async function loadFollowupStats() {
+  const wrap = $("#fu-stats"); if (!wrap) return;
+  let s; try { s = await api("/api/followups/stats"); } catch { return; }
+  wrap.innerHTML = "";
+
+  // top metric cards
+  const cards = el("div", { class: "fu-stat-row" },
+    fuStatCard(s.published, t("fu.st.published"), "accent"),
+    fuStatCard(s.to_people, t("fu.st.people"), "pink"),
+    fuStatCard(s.followups, t("fu.st.own"), ""),
+    fuStatCard(s.today, t("fu.st.today"), "teal"),
+    fuStatCard(s.pending, t("fu.st.pending"), "amber"));
+  wrap.append(cards);
+
+  // engagement panel: reply-back ring + dialog vs no-reply
+  const eng = el("div", { class: "panel fu-eng" });
+  const ringWrap = el("div", { class: "fu-ring" });
+  const pctB = el("b", { text: "0" });
+  ringWrap.append(progressRing(s.reply_back_rate || 0, { c1: "#ff2e7e", c2: "#7ee7ff" }),
+    el("div", { class: "fu-ring-c" }, pctB, el("i", { text: "%" })));
+  countUp(pctB, s.reply_back_rate || 0, { dec: 1 });
+  const engRight = el("div", { class: "fu-eng-r" },
+    el("h3", { text: t("fu.eng.title") }),
+    el("div", { class: "fu-eng-rows" },
+      el("div", { class: "fu-eng-row good" }, el("span", { text: t("fu.eng.dialog") }), el("b", { text: fmtNum(s.dialogs || 0) })),
+      el("div", { class: "fu-eng-row dim" }, el("span", { text: t("fu.eng.noreply") }), el("b", { text: fmtNum(s.no_reply_back || 0) })),
+      el("div", { class: "fu-eng-row" }, el("span", { text: t("fu.eng.reached") }), el("b", { text: fmtNum(s.people_reached || 0) }))),
+    el("div", { class: "fu-eng-hint", text: t("fu.eng.hint") }));
+  eng.append(ringWrap, engRight);
+  wrap.append(eng);
+
+  // per-day chart
+  const days = s.by_day || [];
+  if (days.length) {
+    const chart = el("div", { class: "panel fu-daychart" });
+    chart.append(el("div", { class: "panel-head" }, el("h3", { text: t("fu.day.title") })));
+    const max = Math.max(1, ...days.map(d => d.count));
+    const bars = el("div", { class: "fu-bars" });
+    days.forEach(d => {
+      const col = el("div", { class: "fu-bar-col" });
+      const h = Math.round((d.count / max) * 100);
+      const bar = el("div", { class: "fu-bar", title: `${d.date}: ${d.count}` });
+      const people = el("div", { class: "fu-bar-people" });
+      const ph = d.count ? Math.round((d.people / d.count) * 100) : 0;
+      people.style.height = ph + "%";
+      bar.append(people);
+      setTimeout(() => { bar.style.height = Math.max(3, h) + "%"; }, 40);
+      col.append(el("span", { class: "fu-bar-v", text: d.count || "" }), bar,
+        el("span", { class: "fu-bar-d", text: d.date.slice(5) }));
+      bars.append(col);
+    });
+    chart.append(bars);
+    chart.append(el("div", { class: "fu-legend" },
+      el("span", { class: "lg pink", text: t("fu.day.people") }),
+      el("span", { class: "lg accent", text: t("fu.day.own") })));
+    wrap.append(chart);
+  }
+
+  // per-account
+  const accs = s.by_account || [];
+  if (accs.length) {
+    const box = el("div", { class: "panel fu-accs" });
+    box.append(el("div", { class: "panel-head" }, el("h3", { text: t("fu.acc.title") })));
+    accs.forEach(a => {
+      const rate = a.published ? Math.round(a.dialogs / a.published * 100) : 0;
+      box.append(el("div", { class: "fu-acc-row" },
+        el("span", { class: "fu-acc-h", text: "@" + (a.account || "").replace(/^@/, "") }),
+        el("span", { class: "fu-acc-m", text: `${a.published} ${t("fu.acc.replies")}` }),
+        el("span", { class: "fu-acc-m pink", text: `${a.to_people} ${t("fu.acc.people")}` }),
+        el("span", { class: "fu-acc-m good", text: `${a.dialogs} 💬 (${rate}%)` })));
+    });
+    wrap.append(box);
+  }
+}
 async function loadFollowups() {
+  loadFollowupStats();
   const d = await api("/api/followups").catch(() => null);
   if (!d) return;
   const auto = $("#fu-auto");

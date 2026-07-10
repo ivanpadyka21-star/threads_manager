@@ -155,6 +155,35 @@ async def _replies_async(media_id: str, credentials_file: str) -> dict:
         return await api._get(url)
 
 
+async def _conversation_async(media_id: str, credentials_file: str) -> dict:
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+    from pythreads.threads import Threads
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        url = Threads.build_graph_api_url(
+            f"{media_id}/conversation",
+            {"fields": "id,text,username,is_reply_owned_by_me,has_replies"},
+            api._access_token(),
+        )
+        return await api._get(url)
+
+
+def fetch_conversation(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> list:
+    """Fetch the full flattened conversation (all nested replies) under a post.
+
+    Used to detect whether people replied back to OUR replies (``has_replies`` on
+    entries where ``is_reply_owned_by_me``). Needs ``threads_read_replies``.
+    """
+    _ensure_ready(credentials_file)
+    raw = asyncio.run(_conversation_async(media_id, credentials_file))
+    if isinstance(raw, dict) and raw.get("error"):
+        raise RuntimeError(str(raw["error"].get("message", raw["error"])))
+    return list((raw or {}).get("data", [])) if isinstance(raw, dict) else []
+
+
 def fetch_replies(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> list:
     """Fetch the top-level replies (comments) on one of OUR OWN posts.
 

@@ -361,6 +361,43 @@ class WarmupAgent:
             return ""
 
 
+def refresh_reply_engagement(store, max_posts: int = 8) -> dict:
+    """Detect whether people replied BACK to our published replies.
+
+    For each recent post that carries our replies, reads the full conversation
+    once and marks each of our replies as ``got_reply`` if it has children. This
+    powers the 'диалог завязался' vs 'без ответа' stats. Best-effort.
+    """
+    from mobile_e2e.web import threads_client
+
+    rows = store.done_reply_pids(limit=300)
+    # group our replies by the parent post they live under
+    groups: dict = {}
+    for r in rows:
+        parent = r.get("target_url") if r["kind"] == "comment_reply" else r.get("target_id")
+        if not parent:
+            continue
+        groups.setdefault((r["account_id"], parent), []).append(r["published_id"])
+
+    checked = updated = 0
+    for (account_id, parent), pids in list(groups.items())[:max_posts]:
+        account = store.get_account(account_id) if account_id else None
+        creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+        try:
+            convo = threads_client.fetch_conversation(parent, creds)
+        except Exception as exc:  # noqa: BLE001 - skip this post
+            LOG.warning("conversation fetch failed for %s: %s", parent, exc)
+            continue
+        has_child = {str(e.get("id")): bool(e.get("has_replies")) for e in convo}
+        want = set(pids)
+        for pid, got in has_child.items():
+            if pid in want:
+                store.set_reply_engagement(pid, got)
+                checked += 1
+                updated += 1 if got else 0
+    return {"checked": checked, "with_reply_back": updated}
+
+
 def autopublish_followups(store, max_per_pass: int = 3) -> dict:
     """Gently publish a few approved follow-ups (owner opted in via a setting).
 

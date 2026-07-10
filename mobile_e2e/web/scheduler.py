@@ -76,6 +76,9 @@ class PostScheduler:
                             p = autopublish_followups(self._store, max_per_pass=3)
                             if p.get("published"):
                                 LOG.info("auto-published %s follow-ups", p["published"])
+                        # Learn who replied back to our replies (engagement stats).
+                        from mobile_e2e.web.warmup import refresh_reply_engagement
+                        refresh_reply_engagement(self._store)
                 except Exception as exc:  # noqa: BLE001
                     LOG.warning("followup auto error: %s", exc)
             i += 1

@@ -172,6 +172,43 @@ def test_draft_comment_replies_reads_real_comments_and_skips_own_and_dupes(store
     assert store.own_reply_counts().get("4001") == 1
 
 
+def test_reply_stats_and_engagement(store, monkeypatch):
+    from mobile_e2e.web import warmup, threads_client
+
+    acc = store.add_account(name="A", handle="@a")
+    # two published replies to people + one follow-up under our own post
+    a1 = store.add_warmup_action(account_id=acc["id"], kind="comment_reply",
+                                 target_author="max", target_text="x", target_url="P1",
+                                 target_id="c1", draft="hi")
+    a2 = store.add_warmup_action(account_id=acc["id"], kind="comment_reply",
+                                 target_author="ivan", target_text="y", target_url="P1",
+                                 target_id="c2", draft="ho")
+    f1 = store.add_warmup_action(account_id=acc["id"], kind="followup",
+                                 target_author="@a", target_text="z", target_id="P1",
+                                 draft="dev")
+    store.set_warmup_status(a1["id"], "done", published_id="r1")
+    store.set_warmup_status(a2["id"], "done", published_id="r2")
+    store.set_warmup_status(f1["id"], "done", published_id="r3")
+
+    st = store.reply_stats()
+    assert st["published"] == 3 and st["to_people"] == 2 and st["followups"] == 1
+    assert st["people_reached"] == 2 and st["dialogs"] == 0
+    assert st["no_reply_back"] == 3 and len(st["by_day"]) == 14
+
+    # engagement: person replied back to r1 only (has_replies True on our reply)
+    convo = [
+        {"id": "r1", "is_reply_owned_by_me": True, "has_replies": True},
+        {"id": "r2", "is_reply_owned_by_me": True, "has_replies": False},
+        {"id": "c1", "is_reply_owned_by_me": False, "has_replies": True},
+    ]
+    monkeypatch.setattr(threads_client, "fetch_conversation", lambda pid, creds: convo)
+    res = warmup.refresh_reply_engagement(store)
+    assert res["with_reply_back"] == 1
+    st2 = store.reply_stats()
+    assert st2["dialogs"] == 1 and st2["no_reply_back"] == 2
+    assert st2["reply_back_rate"] == round(1 * 100 / 3, 1)
+
+
 def test_warmup_hands_fresh_live_posts_to_strategist(store, monkeypatch):
     from mobile_e2e.web import feed_source
     acc = store.add_account(name="A")

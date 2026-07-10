@@ -637,6 +637,11 @@ def create_app(
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202
 
+    @app.get("/api/followups/stats")
+    def followups_stats():
+        days = request.args.get("days", default=14, type=int)
+        return jsonify(db.reply_stats(days=days))
+
     @app.post("/api/followups/reply-people")
     def followups_reply_people():
         data = request.get_json(silent=True) or {}

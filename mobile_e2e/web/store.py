@@ -212,6 +212,8 @@ class Store:
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "persona", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
+        # Did the person reply back to OUR published reply? (engagement tracking)
+        self._ensure_column("warmup_actions", "got_reply", "INTEGER DEFAULT 0")
 
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
         with self._lock, self._conn:
@@ -1062,6 +1064,97 @@ class Store:
     # Back-compat alias (older callers/tests).
     def own_followup_counts(self) -> dict:
         return self.own_reply_counts()
+
+    def set_reply_engagement(self, published_id: str, got_reply: bool) -> None:
+        """Mark whether a person replied back to OUR published reply."""
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE warmup_actions SET got_reply = ? WHERE published_id = ?",
+                (1 if got_reply else 0, str(published_id)),
+            )
+
+    def done_reply_pids(self, limit: int = 200) -> List[dict]:
+        """Our published auto-replies (for engagement refresh): id, kind, pid, parent post."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, kind, account_id, published_id, target_url, target_id "
+                "FROM warmup_actions WHERE kind IN ('followup','comment_reply') "
+                "AND status = 'done' AND published_id != '' AND published_id IS NOT NULL "
+                "ORDER BY updated_at DESC LIMIT ?", (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def reply_stats(self, days: int = 14) -> dict:
+        """Rich stats for the auto-reply engine (follow-ups + replies to people)."""
+        kinds = ("followup", "comment_reply")
+        marks = ",".join("?" for _ in kinds)
+        today = _today()
+        cutoff = (datetime.now(_TZ).replace(tzinfo=None)
+                  - timedelta(days=days - 1)).date().isoformat()
+        with self._lock:
+            def one(sql, params=()):
+                return self._conn.execute(sql, params).fetchone()[0] or 0
+
+            published = one(
+                f"SELECT COUNT(*) FROM warmup_actions WHERE kind IN ({marks}) AND status='done'",
+                kinds)
+            to_people = one(
+                "SELECT COUNT(*) FROM warmup_actions WHERE kind='comment_reply' AND status='done'")
+            followups = one(
+                "SELECT COUNT(*) FROM warmup_actions WHERE kind='followup' AND status='done'")
+            pending = one(
+                f"SELECT COUNT(*) FROM warmup_actions WHERE kind IN ({marks}) AND status='pending'",
+                kinds)
+            skipped = one(
+                f"SELECT COUNT(*) FROM warmup_actions WHERE kind IN ({marks}) AND status='skipped'",
+                kinds)
+            dialogs = one(
+                f"SELECT COUNT(*) FROM warmup_actions WHERE kind IN ({marks}) AND status='done' "
+                "AND got_reply=1", kinds)
+            today_cnt = one(
+                f"SELECT COUNT(*) FROM warmup_actions WHERE kind IN ({marks}) AND status='done' "
+                "AND substr(updated_at,1,10)=?", (*kinds, today))
+            people_reached = one(
+                "SELECT COUNT(DISTINCT lower(target_author)) FROM warmup_actions "
+                "WHERE kind='comment_reply' AND status='done' AND target_author!=''")
+            day_rows = self._conn.execute(
+                f"SELECT substr(updated_at,1,10) d, "
+                f"  SUM(CASE WHEN kind='comment_reply' THEN 1 ELSE 0 END) people, "
+                f"  COUNT(*) total "
+                f"FROM warmup_actions WHERE kind IN ({marks}) AND status='done' "
+                f"AND substr(updated_at,1,10) >= ? GROUP BY d ORDER BY d",
+                (*kinds, cutoff)).fetchall()
+            acc_rows = self._conn.execute(
+                f"SELECT account_id, COUNT(*) published, "
+                f"  SUM(CASE WHEN kind='comment_reply' THEN 1 ELSE 0 END) to_people, "
+                f"  SUM(CASE WHEN got_reply=1 THEN 1 ELSE 0 END) dialogs "
+                f"FROM warmup_actions WHERE kind IN ({marks}) AND status='done' "
+                f"GROUP BY account_id", kinds).fetchall()
+
+        names = {a["id"]: (a.get("handle") or a.get("name") or f"acc {a['id']}")
+                 for a in self.list_accounts()}
+        by_day_map = {r["d"]: {"people": r["people"] or 0, "total": r["total"] or 0}
+                      for r in day_rows}
+        by_day = []
+        for i in range(days):
+            d = (datetime.now(_TZ).replace(tzinfo=None)
+                 - timedelta(days=days - 1 - i)).date().isoformat()
+            m = by_day_map.get(d, {"people": 0, "total": 0})
+            by_day.append({"date": d, "count": m["total"], "people": m["people"]})
+        by_account = [{
+            "account": names.get(r["account_id"], f"acc {r['account_id']}"),
+            "published": r["published"] or 0, "to_people": r["to_people"] or 0,
+            "dialogs": r["dialogs"] or 0,
+        } for r in acc_rows]
+        by_account.sort(key=lambda x: x["published"], reverse=True)
+        return {
+            "published": published, "to_people": to_people, "followups": followups,
+            "pending": pending, "skipped": skipped, "dialogs": dialogs,
+            "no_reply_back": max(0, published - dialogs),
+            "reply_back_rate": round(dialogs * 100 / published, 1) if published else 0.0,
+            "people_reached": people_reached, "today": today_cnt,
+            "by_day": by_day, "by_account": by_account,
+        }
 
     def answered_comment_ids(self) -> set:
         """Comment ids we've already drafted/queued/published a reply for (dedupe)."""
