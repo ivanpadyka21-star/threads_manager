@@ -1523,6 +1523,7 @@ function renderStatsTop() {
 }
 async function loadStats() {
   const d = await api("/api/stats/full"); statsData = d;
+  const kpi = await api("/api/kpi").catch(() => null);
   // goals
   const g = $("#stats-goals"); g.innerHTML = "";
   g.append(
@@ -1535,10 +1536,12 @@ async function loadStats() {
   // overall
   const o = $("#stats-overall"); o.innerHTML = "";
   o.append(
-    statTile({ label: t("col.views"), value: d.overall.views, accent: true }),
+    statTile({ label: t("stats.postviews"), value: d.overall.views, accent: true }),
+    statTile({ label: t("stats.profileviews"), value: (kpi && kpi.totals) ? kpi.totals.profile_views : 0 }),
     statTile({ label: t("col.replies"), value: d.overall.replies }),
     statTile({ label: t("col.likes"), value: d.overall.likes }),
     statTile({ label: t("stats.rr"), value: d.overall.avg_reply_rate, unit: "‰", dec: 1 }),
+    statTile({ label: t("stats.clicks"), value: (kpi && kpi.totals) ? kpi.totals.clicks : 0 }),
     statTile({ label: t("stats.published"), value: d.overall.published }),
     statTile({ label: t("stats.accounts"), value: d.overall.accounts }),
   );
