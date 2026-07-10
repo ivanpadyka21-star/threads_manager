@@ -41,6 +41,10 @@ def refresh_account_insights(store, days: int = 30) -> dict:
             LOG.warning("account insights failed for %s: %s", a.get("handle"), exc)
             continue
         store.snapshot_account_insight(a["id"], **ins)
+        # remember which links people click (e.g. the bio Telegram link)
+        links = ins.get("click_links") or []
+        if links:
+            store.set_setting(f"clicklinks:{a['id']}", json.dumps(links[:3]))
         done += 1
         # demographics unlock at 100+ followers — store gender split when available
         if (ins.get("followers") or 0) >= 100:

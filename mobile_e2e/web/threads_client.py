@@ -259,15 +259,27 @@ async def _account_insights_async(user_id: str, credentials_file: str, days: int
             out["profile_views"] = sum(x["value"] for x in out["profile_views_series"])
         except Exception:  # noqa: BLE001
             pass
-        # account engagement totals over the window
+        # account engagement totals over the window. NOTE: clicks come back as
+        # `link_total_values` (per-link), NOT `total_value` — sum them and keep
+        # the top link so we can show WHICH link people click (e.g. the bio TG).
+        out["click_links"] = []
         try:
             r = await api._get(Threads.build_graph_api_url(
                 f"{user_id}/threads_insights",
                 {"metric": "likes,replies,reposts,quotes,clicks",
                  "since": since, "until": until}, tok))
-            for name, v in _total(r):
-                if name in out:
-                    out[name] = v
+            for it in (r or {}).get("data", []):
+                name = it.get("name")
+                if name == "clicks":
+                    links = it.get("link_total_values") or []
+                    out["clicks"] = sum(int(l.get("value") or 0) for l in links)
+                    out["click_links"] = sorted(
+                        [{"url": l.get("link_url", ""), "value": int(l.get("value") or 0)}
+                         for l in links], key=lambda x: x["value"], reverse=True)
+                else:
+                    tv = it.get("total_value")
+                    if isinstance(tv, dict) and name in out:
+                        out[name] = int(tv.get("value") or 0)
         except Exception:  # noqa: BLE001
             pass
         return out

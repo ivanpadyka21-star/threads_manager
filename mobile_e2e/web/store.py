@@ -266,12 +266,17 @@ class Store:
             first = snaps[0] if snaps else {}
             prev = snaps[-2] if len(snaps) > 1 else first
             followers = latest.get("followers", 0)
+            import json as _json
             demo = self.get_setting(f"demographics:{a['id']}", "")
             try:
-                import json as _json
                 demo = _json.loads(demo) if demo else None
             except Exception:  # noqa: BLE001
                 demo = None
+            links = self.get_setting(f"clicklinks:{a['id']}", "")
+            try:
+                links = _json.loads(links) if links else []
+            except Exception:  # noqa: BLE001
+                links = []
             per_account.append({
                 "id": a["id"],
                 "account": a.get("handle") or a.get("name") or f"acc {a['id']}",
@@ -289,6 +294,7 @@ class Store:
                 "demographics": demo,
                 "demo_locked": followers < 100,
                 "demo_needed": max(0, 100 - followers),
+                "click_links": links,
             })
             for k in totals:
                 totals[k] += latest.get(k, 0)

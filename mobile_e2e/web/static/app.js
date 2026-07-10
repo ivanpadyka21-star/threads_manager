@@ -768,6 +768,15 @@ async function loadKPI() {
       kpiMini("🔗", a.clicks, t("kpi.clicks")),
       kpiMini("❤", a.likes, t("col.likes")),
       kpiMini("💬", a.replies, t("col.replies"))));
+    // top clicked link (e.g. the bio Telegram link)
+    const links = a.click_links || [];
+    if (links.length && links[0].value > 0) {
+      const short = links[0].url.replace(/^https?:\/\//, "").slice(0, 34);
+      card.append(el("div", { class: "kpi-link" },
+        el("span", { class: "kpi-link-i", text: "🔗" }),
+        el("a", { href: links[0].url, target: "_blank", class: "kpi-link-u", text: short }),
+        el("b", { class: "kpi-link-v", text: fmtNum(links[0].value) })));
+    }
     // profile-views sparkline
     card.append(el("div", { class: "kpi-spark" }, sparkline(a.views_series, "#7ee7ff")));
     // demographics or locked

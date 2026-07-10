@@ -591,6 +591,10 @@ label.auto input { width: auto; margin: 0; }
 .kpi-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 6px; }
 .kpi-mini { text-align: center; padding: 8px 4px; border-radius: var(--radius-sm); background: rgba(255,255,255,.02); }
 .kpi-mini-i { font-size: 13px; } .kpi-mini b { display: block; font-size: 16px; font-weight: 800; } .kpi-mini-l { font-size: 9.5px; color: var(--muted); text-transform: uppercase; }
+.kpi-link { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 4px 0 2px; border-radius: var(--radius-sm); background: rgba(126,231,255,.06); border: 1px solid rgba(126,231,255,.18); font-size: 12.5px; }
+.kpi-link-u { color: var(--accent-2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.kpi-link-u:hover { text-decoration: underline; }
+.kpi-link-v { color: #34d399; font-weight: 800; }
 .kpi-spark { margin: 6px 0 12px; }
 .kpi-demo { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
 .kpi-demo-h { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
