@@ -621,6 +621,7 @@ def create_app(
             "autopublish": str(db.get_setting("followups_autopublish", "0")) != "0",
             "heartbeat_age": db.setting_age_seconds("scheduler_heartbeat"),
             "last_pass_age": db.setting_age_seconds("followups_last_run"),
+            "intensity": db.get_setting("fu_intensity", "normal"),
             "pass_interval": 1800,
         })
 
@@ -635,6 +636,16 @@ def create_app(
         on = bool((request.get_json(silent=True) or {}).get("on", True))
         db.set_setting("followups_autopublish", "1" if on else "0")
         return jsonify({"autopublish": on})
+
+    @app.post("/api/followups/intensity")
+    def followups_intensity():
+        on = bool((request.get_json(silent=True) or {}).get("on", True))
+        db.set_setting("fu_intensity", "max" if on else "normal")
+        # Max mode is only useful if drafting + publishing are on.
+        if on:
+            db.set_setting("followups_auto", "1")
+            db.set_setting("followups_autopublish", "1")
+        return jsonify({"intensity": "max" if on else "normal"})
 
     @app.post("/api/followups/draft")
     def followups_draft():

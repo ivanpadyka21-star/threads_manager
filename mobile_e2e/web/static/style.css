@@ -509,6 +509,7 @@ label.auto input { width: auto; margin: 0; }
 
 /* Follow-ups (auto-comment under our own posts) */
 .fu-toggles { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.fu-max span { color: var(--amber); font-weight: 600; }
 .fu-pulse { font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 999px; white-space: nowrap; }
 .fu-pulse.alive { color: #34d399; background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.28); animation: fuPulse 2.2s ease-in-out infinite; }
 .fu-pulse.down { color: #ff6b6b; background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.3); }

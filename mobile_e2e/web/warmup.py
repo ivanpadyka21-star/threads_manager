@@ -398,28 +398,29 @@ def refresh_reply_engagement(store, max_posts: int = 8) -> dict:
     return {"checked": checked, "with_reply_back": updated}
 
 
-def autopublish_followups(store, max_per_pass: int = 3) -> dict:
-    """Gently publish a few approved follow-ups (owner opted in via a setting).
+def autopublish_followups(store, max_per_pass: int = 3, per_account: int = 1) -> dict:
+    """Publish approved auto-replies, spread across accounts to avoid abuse blocks.
 
-    Deliberately small and spread — at most ``max_per_pass`` per call and never
-    two for the same account in one pass — so it never trips Meta's abuse guard.
-    Best-effort: a failure on one follow-up is skipped, not fatal.
+    ``max_per_pass`` caps the total per call; ``per_account`` caps how many one
+    account may send per pass (keeps a single account from bursting). Best-effort:
+    a failure on one is skipped, not fatal.
     """
-    published, used_accounts = 0, set()
-    for a in store.pending_followups(limit=50):
+    from collections import Counter
+    published, used = 0, Counter()
+    for a in store.pending_followups(limit=80):
         if published >= max_per_pass:
             break
         acc = a.get("account_id")
-        if acc in used_accounts:
-            continue  # one per account per pass — natural spacing
+        if used[acc] >= per_account:
+            continue
         try:
             publish_reply_action(store, a["id"])
             published += 1
-            used_accounts.add(acc)
+            used[acc] += 1
         except Exception as exc:  # noqa: BLE001 - skip this one, try others next pass
             LOG.warning("followup autopublish skipped #%s: %s", a["id"], exc)
     if published:
-        store.log("followup.autopublish", f"{published} follow-ups", None)
+        store.log("followup.autopublish", f"{published} replies", None)
     return {"published": published}
 
 

@@ -948,6 +948,18 @@ async function loadFollowups() {
       });
     }
   }
+  const intens = $("#fu-intensity");
+  if (intens) {
+    if (!window.__liveRefresh || document.activeElement !== intens) intens.checked = d.intensity === "max";
+    if (!intens.dataset.bound) {
+      intens.dataset.bound = "1";
+      intens.addEventListener("change", async () => {
+        await jpost("/api/followups/intensity", { on: intens.checked }).catch(() => {});
+        if (intens.checked && autopub) autopub.checked = true;
+        toast(intens.checked ? t("fu.max_on") : t("fu.max_off"), intens.checked ? "warn" : "success", 5000);
+      });
+    }
+  }
   const cand = $("#fu-cand");
   if (cand) cand.textContent = d.candidates ? t("fu.cand").replace("{n}", d.candidates) : t("fu.cand0");
   const wrap = $("#followups-list"); if (!wrap) return; wrap.innerHTML = "";

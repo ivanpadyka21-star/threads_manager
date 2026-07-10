@@ -41,11 +41,12 @@ class PostScheduler:
         # Run one tick immediately, then every interval. Also refresh live post
         # metrics roughly every 10 minutes so views/comments climb on their own.
         metrics_every = max(1, int(600 / max(1, self._interval)))
-        # Auto-draft follow-ups roughly every 30 min (drafts only — they wait for
-        # the owner's approval before publishing; anti-spam is one per post).
-        followups_every = max(1, int(1800 / max(1, self._interval)))
         i = 0
         while True:
+            # Auto-reply cadence depends on intensity: 'max' mode fires every
+            # ~12 min and sends more per pass; 'normal' every ~30 min, gentle.
+            aggressive = str(self._store.get_setting("fu_intensity", "normal")) == "max"
+            followups_every = max(1, int((720 if aggressive else 1800) / max(1, self._interval)))
             try:
                 self.tick()
             except Exception as exc:  # noqa: BLE001 - never let the loop die
@@ -69,18 +70,25 @@ class PostScheduler:
                         from mobile_e2e.web.warmup import (draft_followups,
                                                            draft_comment_replies,
                                                            autopublish_followups)
-                        r = draft_followups(self._store, per_run=6)
+                        r = draft_followups(self._store, per_run=8 if aggressive else 6)
                         if r.get("drafted"):
                             LOG.info("auto-drafted %s follow-ups", r["drafted"])
-                        # Read real comments on our posts and draft hooky replies.
-                        cr = draft_comment_replies(self._store)
+                        # Read real comments on our posts and draft hooky replies —
+                        # in max mode we scan more posts and answer more per post.
+                        cr = draft_comment_replies(
+                            self._store,
+                            max_posts=12 if aggressive else 6,
+                            per_post=8 if aggressive else 5)
                         if cr.get("drafted"):
                             LOG.info("auto-drafted %s replies to people", cr["drafted"])
-                        # Owner opted in to auto-publish: send a few, gently.
+                        # Owner opted in to auto-publish: send them, spread across accounts.
                         if str(self._store.get_setting("followups_autopublish", "0")) not in ("0", "false", ""):
-                            p = autopublish_followups(self._store, max_per_pass=3)
+                            p = autopublish_followups(
+                                self._store,
+                                max_per_pass=8 if aggressive else 3,
+                                per_account=2 if aggressive else 1)
                             if p.get("published"):
-                                LOG.info("auto-published %s follow-ups", p["published"])
+                                LOG.info("auto-published %s replies", p["published"])
                         # Learn who replied back to our replies (engagement stats).
                         from mobile_e2e.web.warmup import refresh_reply_engagement
                         refresh_reply_engagement(self._store)
