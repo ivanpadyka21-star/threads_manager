@@ -44,7 +44,20 @@ def has_openai() -> bool:
     return _has_key("openai")
 
 
-def provider_settings(provider: str) -> AISettings:
+def role_model(role: str, provider: str) -> Optional[str]:
+    """The model id to use for a (role, provider) pair.
+
+    The STRATEGIST runs on a strong reasoning model (default gpt-5.5); the
+    writer/warmup on a fast, cheap one. Overridable via env.
+    """
+    if provider != "openai":
+        return None  # Gemini uses its own default chain
+    if role in ("strategist", "analyst"):
+        return os.getenv("E2E_AI_STRATEGIST_MODEL", "gpt-5.5")
+    return os.getenv("E2E_AI_OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+
+
+def provider_settings(provider: str, model: Optional[str] = None) -> AISettings:
     """Build :class:`AISettings` for one provider using its own key/model.
 
     Every provider-specific field (base_url, model, models) is passed
@@ -53,7 +66,7 @@ def provider_settings(provider: str) -> AISettings:
     Gemini model ids being sent to the OpenAI endpoint.
     """
     if provider == "openai":
-        model = os.getenv("E2E_AI_OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+        model = model or os.getenv("E2E_AI_OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
         return AISettings(
             _env_file=None,
             provider="openai",
@@ -110,7 +123,8 @@ class BrainAgent:
         last_error = None
         for provider in self._providers:
             try:
-                agent = AIAgent(self._system_prompt, settings=provider_settings(provider))
+                settings = provider_settings(provider, model=role_model(self._role, provider))
+                agent = AIAgent(self._system_prompt, settings=settings)
                 return agent.generate_response(context_text)
             except Exception as exc:  # noqa: BLE001 - try the next provider
                 last_error = exc

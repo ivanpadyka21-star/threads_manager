@@ -32,7 +32,7 @@ from mobile_e2e.web.strategy import (
     StrategyCycle, StrategyScheduler, get_strategy_settings,
     create_and_run_drop, evaluate_drop,
     S_ENABLED, S_HOUR, S_COUNT, S_LANGUAGE, S_ACCOUNT, S_INTERVAL,
-    S_GOAL_VIEWS, S_GOAL_COMMENTS, S_NICHE,
+    S_GOAL_VIEWS, S_GOAL_COMMENTS, S_NICHE, S_RULES,
 )
 from mobile_e2e.web.service import STRATEGIES, WorkflowRequest, parse_proxy_preview
 from mobile_e2e.web.store import RateLimitError, Store
@@ -363,10 +363,13 @@ def create_app(
     @app.get("/api/brain")
     def brain_status():
         from mobile_e2e.ai import brain
+        sp = brain.role_providers("strategist")
         return jsonify({
             "openai": brain.has_openai(),
-            "strategist": brain.role_providers("strategist"),
+            "strategist": sp,
             "writer": brain.role_providers("writer"),
+            "strategist_model": (brain.role_model("strategist", "openai")
+                                 if "openai" in sp else "gemini"),
         })
 
     # -- daily strategy cycle -----------------------------------------------
@@ -393,6 +396,8 @@ def create_app(
                 db.set_setting(key, str(int(data[name])))
         if "niche" in data:
             db.set_setting(S_NICHE, str(data.get("niche") or ""))
+        if "rules" in data:
+            db.set_setting(S_RULES, str(data.get("rules") or ""))
         return jsonify(get_strategy_settings(db))
 
     @app.get("/api/strategy/runs")

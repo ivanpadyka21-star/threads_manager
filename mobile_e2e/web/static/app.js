@@ -1371,6 +1371,7 @@ async function loadCycle(full) {
       if ($("#cyc-goalv")) $("#cyc-goalv").value = cfg.goal_views;
       if ($("#cyc-goalc")) $("#cyc-goalc").value = cfg.goal_comments;
       if ($("#cyc-niche")) $("#cyc-niche").value = cfg.niche || "";
+      if ($("#cyc-rules")) $("#cyc-rules").value = cfg.rules || "";
     }
     renderGoalBar(cfg);
     const sel = $("#cyc-account");
@@ -1391,8 +1392,9 @@ async function renderBrain() {
     const b = await api("/api/brain");
     const nice = p => p === "openai" ? "GPT" : (p === "gemini" ? "Gemini" : p);
     const chain = arr => (arr || []).map(nice).join(" → ");
+    const model = b.strategist_model && b.strategist_model !== "gemini" ? ` · ${b.strategist_model}` : "";
     wrap.innerHTML =
-      `<span class="chip ${b.openai ? "good" : ""}">🧠 ${t("brain.strategist")}: ${chain(b.strategist)}</span>` +
+      `<span class="chip ${b.openai ? "good" : ""}">🧠 ${t("brain.strategist")}: ${chain(b.strategist)}${model}</span>` +
       `<span class="chip">✍️ ${t("brain.writer")}: ${chain(b.writer)}</span>` +
       (b.openai ? "" : `<span class="brain-hint">${t("brain.addkey")}</span>`);
   } catch (e) { wrap.innerHTML = ""; }
@@ -1440,6 +1442,11 @@ function renderGoalBar(cfg) {
   wrap.append(bar(t("cyc.g.views"), p.views, gv, pctV, "v"));
   wrap.append(bar(t("cyc.g.comments"), p.replies, gc, pctC, "c"));
 }
+const cycRulesSave = $("#cyc-rules-save");
+if (cycRulesSave) cycRulesSave.addEventListener("click", async () => {
+  await jpost("/api/strategy/settings", { rules: $("#cyc-rules").value });
+  toast(t("cyc.rules.saved"), "success");
+});
 const cycSave = $("#cyc-save");
 if (cycSave) cycSave.addEventListener("click", async () => {
   const cfg = await jpost("/api/strategy/settings", {

@@ -24,7 +24,7 @@ _KIND_ACTION = {
 
 def build_ai_prompt(
     task: dict, account: Optional[dict] = None, char_limit: int = 480,
-    insights: Optional[str] = None,
+    insights: Optional[str] = None, rules: Optional[str] = None,
 ) -> Tuple[str, str]:
     """Return ``(system_prompt, user_prompt)`` for :class:`AIAgent`.
 
@@ -91,6 +91,11 @@ def build_ai_prompt(
             "PERFORMANCE DATA — lean into what the real audience rewards, do not "
             "copy the examples verbatim but absorb why they worked (the personal, "
             "intimate, vulnerable, direct tone) and apply it here:\n" + insights.strip()
+        )
+    if rules and rules.strip():
+        sys_lines.append(
+            "OWNER RULES (highest priority — always obey these over everything else):\n"
+            + rules.strip()
         )
 
     # --- user prompt: the concrete ask ------------------------------------

@@ -142,18 +142,29 @@ class AIAgent:
 
         return self._handle_failure(context_text, last_error)
 
+    @staticmethod
+    def _is_reasoning_model(model: str) -> bool:
+        """Frontier reasoning models (gpt-5*, o1/o3/o4*) reject `max_tokens` and a
+        custom `temperature`; they use `max_completion_tokens` and temperature=1."""
+        m = (model or "").lower()
+        return m.startswith(("gpt-5", "o1", "o3", "o4"))
+
     def _call_model(self, model: str, messages: list) -> str:
         """One model, with same-model retries for transient network errors."""
         attempts = self._max_retries + 1
         delay = self._retry_delay
         for attempt in range(1, attempts + 1):
+            if self._is_reasoning_model(model):
+                # Reasoning models spend tokens on internal thinking, so give
+                # generous headroom and drop the unsupported params.
+                params = {"model": model, "messages": messages,
+                          "max_completion_tokens": self._settings.max_tokens or 4000}
+            else:
+                params = {"model": model, "messages": messages,
+                          "temperature": self._settings.temperature,
+                          "max_tokens": self._settings.max_tokens}
             try:
-                response = self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=self._settings.temperature,
-                    max_tokens=self._settings.max_tokens,
-                )
+                response = self.client.chat.completions.create(**params)
             except _RETRY_ERRORS:
                 if attempt < attempts:
                     time.sleep(delay)

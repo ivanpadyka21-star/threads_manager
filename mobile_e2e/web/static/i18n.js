@@ -206,6 +206,9 @@ const TRANSLATIONS = {
     "cyc.goalv": "Цель: просмотры", "cyc.goalc": "Цель: комменты",
     "cyc.g.views": "Просмотры (30 дн)", "cyc.g.comments": "Комментарии (30 дн)",
     "cyc.niche": "Ниша (ключевые слова для разведки ленты)", "cyc.niche.ph": "стосунки, секс, зрада, побачення",
+    "cyc.rules": "🧠 Правила стратега (твои требования — вшиваются в каждый план и пост)",
+    "cyc.rules.ph": "напр. не начинать с «Привіт, красуні»; меньше эмодзи; острее вопрос; без клише",
+    "cyc.rules.save": "Сохранить правила", "cyc.rules.saved": "Правила сохранены — стратег будет им следовать",
   },
   en: {
     "nav.dashboard": "Dashboard", "nav.accounts": "Accounts", "nav.tasks": "Tasks",
@@ -410,6 +413,9 @@ const TRANSLATIONS = {
     "cyc.goalv": "Goal: views", "cyc.goalc": "Goal: comments",
     "cyc.g.views": "Views (30d)", "cyc.g.comments": "Comments (30d)",
     "cyc.niche": "Niche (keywords for feed recon)", "cyc.niche.ph": "relationships, sex, cheating, dating",
+    "cyc.rules": "🧠 Strategist rules (your requirements — baked into every plan and post)",
+    "cyc.rules.ph": "e.g. don't open with «Привіт, красуні»; fewer emojis; sharper question; no cliché",
+    "cyc.rules.save": "Save rules", "cyc.rules.saved": "Rules saved — the strategist will follow them",
   },
 };
 

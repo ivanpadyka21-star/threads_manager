@@ -122,8 +122,13 @@ class StrategyCycle:
         ) or "(nothing yet)"
         format_ids = ", ".join(a["id"] for a in archetypes.list_archetypes())
 
-        return "\n\n".join([
+        rules = (self._store.get_setting(S_RULES, "") or "").strip()
+        rules_block = (f"=== OWNER RULES (highest priority — always obey) ===\n{rules}"
+                       if rules else "")
+
+        return "\n\n".join(x for x in [
             self._goal_block(),
+            rules_block,
             f"PERSONA (write in this first-person voice): {persona or '(not set)'}",
             f"=== YOUR OWN PERFORMANCE ===\n{insights}",
             f"=== NICHE / FEED TRENDS ===\n{feed}",
@@ -132,7 +137,7 @@ class StrategyCycle:
             f"RECENTLY USED — AVOID REPEATING THESE ANGLES: {avoid}",
             f"TASK: design {count} varied posts for today in {language}, all serving the "
             f"GOAL above. Return STRICT JSON only.",
-        ])
+        ] if x)
 
     # -- plan ---------------------------------------------------------------
     def plan(self, count: int, language: str) -> dict:
@@ -214,9 +219,10 @@ class StrategyCycle:
     def _draft(self, tasks: List[dict]) -> int:
         insights = self._store.content_insights(account_id=self._account_id)["text"]
         account = self._store.get_account(self._account_id) if self._account_id else None
+        rules = self._store.get_setting(S_RULES, "") or ""
         done = 0
         for task in tasks:
-            sys_p, usr_p = build_ai_prompt(task, account, insights=insights)
+            sys_p, usr_p = build_ai_prompt(task, account, insights=insights, rules=rules)
             try:
                 draft = self._writer_factory(sys_p).generate_response(usr_p)
                 self._store.set_task_result(task["id"], draft)
@@ -240,11 +246,13 @@ S_LAST_DATE = "strategy_last_date"
 S_GOAL_VIEWS = "strategy_goal_views"
 S_GOAL_COMMENTS = "strategy_goal_comments"
 S_NICHE = "strategy_niche"
+S_RULES = "strategist_rules"
 
 DEFAULTS = {S_ENABLED: "0", S_HOUR: "9", S_COUNT: "6",
             S_LANGUAGE: "Ukrainian", S_ACCOUNT: "", S_INTERVAL: "90",
             S_GOAL_VIEWS: "20000", S_GOAL_COMMENTS: "300",
-            S_NICHE: "стосунки, секс, зрада, побачення, пристрасть, близькість"}
+            S_NICHE: "стосунки, секс, зрада, побачення, пристрасть, близькість",
+            S_RULES: ""}
 
 
 DROP_EVAL_SYSTEM = (
@@ -406,6 +414,7 @@ def get_strategy_settings(store) -> dict:
         "goal_views": int(store.get_setting(S_GOAL_VIEWS, DEFAULTS[S_GOAL_VIEWS]) or 0),
         "goal_comments": int(store.get_setting(S_GOAL_COMMENTS, DEFAULTS[S_GOAL_COMMENTS]) or 0),
         "niche": store.get_setting(S_NICHE, DEFAULTS[S_NICHE]),
+        "rules": store.get_setting(S_RULES, ""),
         "last_date": store.get_setting(S_LAST_DATE, ""),
     }
 
