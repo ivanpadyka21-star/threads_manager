@@ -607,6 +607,9 @@ def create_app(
             "candidates": len(db.posts_needing_followup(account_id=account_id, limit=50)),
             "auto": str(db.get_setting("followups_auto", "1")) != "0",
             "autopublish": str(db.get_setting("followups_autopublish", "0")) != "0",
+            "heartbeat_age": db.setting_age_seconds("scheduler_heartbeat"),
+            "last_pass_age": db.setting_age_seconds("followups_last_run"),
+            "pass_interval": 1800,
         })
 
     @app.post("/api/followups/auto")

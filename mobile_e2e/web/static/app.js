@@ -783,10 +783,30 @@ async function loadFollowupStats() {
     wrap.append(box);
   }
 }
+function fmtAgo(sec) {
+  if (sec == null) return t("fu.pulse.never");
+  if (sec < 90) return t("fu.pulse.now");
+  const m = Math.round(sec / 60);
+  if (m < 60) return t("fu.pulse.min").replace("{n}", m);
+  const h = Math.floor(m / 60);
+  return t("fu.pulse.hr").replace("{h}", h).replace("{m}", m % 60);
+}
+function renderFuPulse(d) {
+  const el0 = $("#fu-pulse"); if (!el0) return;
+  const hb = d.heartbeat_age;
+  const alive = hb != null && hb < 120;   // scheduler ticks every ~30s
+  el0.className = "fu-pulse " + (alive ? "alive" : "down");
+  const last = fmtAgo(d.last_pass_age);
+  el0.textContent = alive
+    ? "● " + t("fu.pulse.alive") + " · " + t("fu.pulse.last") + " " + last
+    : "● " + t("fu.pulse.down");
+  el0.title = alive ? t("fu.pulse.alive_hint") : t("fu.pulse.down_hint");
+}
 async function loadFollowups() {
   loadFollowupStats();
   const d = await api("/api/followups").catch(() => null);
   if (!d) return;
+  renderFuPulse(d);
   const auto = $("#fu-auto");
   if (auto) {
     if (!window.__liveRefresh || document.activeElement !== auto) auto.checked = d.auto !== false;

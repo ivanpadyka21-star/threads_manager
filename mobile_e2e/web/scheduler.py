@@ -50,6 +50,11 @@ class PostScheduler:
                 self.tick()
             except Exception as exc:  # noqa: BLE001 - never let the loop die
                 LOG.warning("scheduler tick error: %s", exc)
+            # Liveness pulse every tick so the dashboard can show 'conveyor alive'.
+            try:
+                self._store.mark_heartbeat("scheduler_heartbeat")
+            except Exception:  # noqa: BLE001
+                pass
             if i % metrics_every == 0:
                 try:
                     from mobile_e2e.web.strategy import refresh_metrics
@@ -79,6 +84,8 @@ class PostScheduler:
                         # Learn who replied back to our replies (engagement stats).
                         from mobile_e2e.web.warmup import refresh_reply_engagement
                         refresh_reply_engagement(self._store)
+                    # Stamp the last auto-reply pass (even if nothing was drafted).
+                    self._store.mark_heartbeat("followups_last_run")
                 except Exception as exc:  # noqa: BLE001
                     LOG.warning("followup auto error: %s", exc)
             i += 1

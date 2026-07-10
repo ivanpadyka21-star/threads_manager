@@ -1065,6 +1065,21 @@ class Store:
     def own_followup_counts(self) -> dict:
         return self.own_reply_counts()
 
+    def mark_heartbeat(self, key: str) -> None:
+        """Stamp a liveness key with the current time (scheduler pulse)."""
+        self.set_setting(key, _now())
+
+    def setting_age_seconds(self, key: str) -> Optional[float]:
+        """Seconds since a timestamp setting was last written (None if never)."""
+        v = self.get_setting(key)
+        if not v:
+            return None
+        try:
+            t = datetime.fromisoformat(v)
+        except ValueError:
+            return None
+        return max(0.0, (datetime.now(_TZ).replace(tzinfo=None) - t).total_seconds())
+
     def set_reply_engagement(self, published_id: str, got_reply: bool) -> None:
         """Mark whether a person replied back to OUR published reply."""
         with self._lock, self._conn:
