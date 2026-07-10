@@ -170,6 +170,25 @@ def fetch_replies(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FIL
     return list((raw or {}).get("data", [])) if isinstance(raw, dict) else []
 
 
+async def _username_async(credentials_file: str) -> str:
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+    from pythreads.threads import Threads
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        url = Threads.build_graph_api_url("me", {"fields": "username"}, api._access_token())
+        r = await api._get(url)
+        return str(r.get("username", "")) if isinstance(r, dict) else ""
+
+
+def account_username(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
+    """The Threads @username the token authenticates as (to catch crossed creds)."""
+    _ensure_ready(credentials_file)
+    return asyncio.run(_username_async(credentials_file))
+
+
 def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
     """Publish a text thread via the official API.
 

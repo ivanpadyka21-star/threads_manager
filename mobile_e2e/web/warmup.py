@@ -23,6 +23,7 @@ manual. Everything is deliberately small: quality over spam, no abuse blocks.
 
 from __future__ import annotations
 
+import os
 from typing import Callable, List, Optional
 
 from mobile_e2e.ai.brain import make_agent
@@ -96,10 +97,14 @@ def draft_comment_replies(store, account_id: Optional[int] = None, *,
         except Exception:  # noqa: BLE001
             rules = ""
     answered = store.answered_comment_ids()
-    # Never reply to ourselves — our own handles (belt-and-braces on top of the
-    # is_reply_owned_by_me flag, which isn't always present).
-    own = {(a.get("handle") or "").strip().lstrip("@").lower()
-           for a in store.list_accounts() if a.get("handle")}
+    # Never reply to ourselves — our own handles AND names (belt-and-braces on top
+    # of the is_reply_owned_by_me flag, which isn't always present).
+    own = set()
+    for a in store.list_accounts():
+        for v in (a.get("handle"), a.get("name")):
+            v = (v or "").strip().lstrip("@").lower()
+            if v:
+                own.add(v)
     posts = [p for p in store.published_tasks(limit=60)
              if (p.get("replies") or 0) > 0 and p.get("published_id")]
     if account_id:
@@ -125,8 +130,11 @@ def draft_comment_replies(store, account_id: Optional[int] = None, *,
             cid = str(r.get("id") or "")
             text = (r.get("text") or "").strip()
             author = (r.get("username") or "").strip().lstrip("@").lower()
+            # Only reply to a comment that has NO reply yet, that isn't ours, and
+            # isn't from any of our own accounts (no account talks to another).
             if (not cid or not text or cid in answered
                     or r.get("is_reply_owned_by_me") or author in own
+                    or r.get("has_replies")
                     or str(r.get("hide_status") or "").upper() == "HIDDEN"):
                 continue
             scanned += 1
@@ -397,8 +405,39 @@ def publish_reply_action(store, action_id: int) -> str:
 
     account = store.get_account(action["account_id"]) if action["account_id"] else None
     creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+    # SAFETY: never let one account post under another. Verify the token actually
+    # authenticates as this account before publishing (catches crossed creds).
+    _assert_identity(account, creds)
     published_id = threads_client.publish_reply(
         action["draft"], action["target_id"], creds)
     store.set_warmup_status(action_id, "done", published_id=published_id)
     store.record_event("warmup.reply", f"replied {published_id}", action["account_id"], level="ok")
     return published_id
+
+
+# Cache verified (creds path, mtime) -> token username, so we don't hit the API
+# on every publish. A re-auth changes the file mtime and re-verifies.
+_IDENTITY_CACHE: dict = {}
+
+
+def _assert_identity(account: Optional[dict], creds: str) -> None:
+    """Raise if the token's @username doesn't match the account's handle."""
+    from mobile_e2e.web import threads_client
+
+    handle = (account or {}).get("handle", "")
+    want = handle.strip().lstrip("@").lower()
+    if not want:
+        return  # no handle on record → nothing to check against
+    try:
+        mtime = os.path.getmtime(creds)
+    except OSError:
+        mtime = 0
+    key = (creds, mtime)
+    got = _IDENTITY_CACHE.get(key)
+    if got is None:
+        got = (threads_client.account_username(creds) or "").strip().lstrip("@").lower()
+        _IDENTITY_CACHE[key] = got
+    if got and got != want:
+        raise ValueError(
+            f"credential mismatch: {creds} authenticates as @{got}, not @{want} "
+            f"— re-authorize this account (won't post to avoid cross-account)")
