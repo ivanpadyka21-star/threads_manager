@@ -7,10 +7,15 @@ flows into the analytics/effectiveness metrics.
 
 from __future__ import annotations
 
+import os
+
 from mobile_e2e.web import threads_client
 
 # Threads rejects posts longer than this; we truncate as a last-resort guard.
 THREADS_MAX_CHARS = 500
+
+# Where uploaded photos live (published as image posts).
+PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "data", "photos")
 
 
 def _clamp(text: str, limit: int = THREADS_MAX_CHARS) -> str:
@@ -46,14 +51,24 @@ def publish_task(db, task_id: int) -> str:
     account = db.get_account(account_id) if account_id else None
     creds = (account or {}).get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
     text = (task.get("result") or task.get("payload") or task.get("title") or "").strip()
-    if not text:
+    # Strip our own [published …] prefix if a re-publish ever hits it.
+    photo = (task.get("photo") or "").strip()
+    if not text and not photo:
         raise ValueError("task has no content to publish")
     # Safety net: never let a too-long draft fail the whole publish.
     text = _clamp(text)
 
     # ThreadsNotConfigured surfaces to the caller untouched (no flagging).
     try:
-        published_id = threads_client.publish_text(text, creds)
+        if photo:
+            # Photo post: stage the local file at a public URL, then publish an
+            # image post. The staged copy auto-expires (litterbox) after Threads
+            # has downloaded it.
+            from mobile_e2e.web import image_host
+            image_url = image_host.stage(os.path.join(PHOTOS_DIR, photo))
+            published_id = threads_client.publish_image(image_url, text, creds)
+        else:
+            published_id = threads_client.publish_text(text, creds)
     except threads_client.ThreadsNotConfigured:
         raise
     except Exception as exc:  # noqa: BLE001 - flag a real publish failure

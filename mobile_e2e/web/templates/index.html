@@ -25,6 +25,7 @@
         <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
         <button class="nav-item" data-tab="warmup"><span>🔥</span> <em data-i18n="nav.warmup">Прогрев</em></button>
         <button class="nav-item" data-tab="followups"><span>💬</span> <em data-i18n="nav.followups">Автоответы</em></button>
+        <button class="nav-item" data-tab="photos"><span>📸</span> <em data-i18n="nav.photos">Фото</em></button>
         <button class="nav-item" data-tab="drops"><span>🚀</span> <em data-i18n="nav.drops">Заливы</em></button>
         <button class="nav-item" data-tab="daily"><span>📅</span> <em data-i18n="nav.daily">Подсчёт дня</em></button>
         <button class="nav-item" data-tab="legends"><span>🏆</span> <em data-i18n="nav.legends">Зал легенд</em></button>
@@ -312,6 +313,20 @@
         </div>
         <div id="kpi-growth"></div>
         <div id="kpi-accounts" class="kpi-accounts"></div>
+      </section>
+
+      <!-- Photos (image posts) -->
+      <section class="tab" id="tab-photos">
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="ph.title">📸 Фото-посты</h2></div>
+          <div class="hint" data-i18n="ph.hint" style="margin-bottom:12px">Загрузи свои фото — и публикуй как посты с текстом прямо на аккаунты. Одно фото можно лить на разные аккаунты с разным текстом. Фото уходит через временный хостинг (авто-удаляется через час).</div>
+          <div class="ph-actions">
+            <label class="ph-upload" for="ph-file"><span data-i18n="ph.upload">⬆ Загрузить фото</span></label>
+            <input type="file" id="ph-file" accept="image/*" multiple hidden>
+            <span id="ph-up-status" class="mut"></span>
+          </div>
+        </div>
+        <div id="photos-grid" class="photos-grid"></div>
       </section>
 
       <!-- Follow-ups (auto-comment under our own posts) -->

@@ -16,7 +16,8 @@ import threading
 import time
 import uuid
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
+from werkzeug.utils import secure_filename
 
 from mobile_e2e.ai.agent import AIAgent
 from mobile_e2e.core.exceptions import ProxyParseError
@@ -662,6 +663,61 @@ def create_app(
 
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202
+
+    # -- photos (image posts) -----------------------------------------------
+    from mobile_e2e.web.publish import PHOTOS_DIR
+    os.makedirs(PHOTOS_DIR, exist_ok=True)
+    _IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+
+    @app.get("/photos/<path:name>")
+    def photos_file(name):
+        return send_from_directory(PHOTOS_DIR, name)
+
+    @app.get("/api/photos")
+    def photos_list():
+        items = []
+        for n in sorted(os.listdir(PHOTOS_DIR), reverse=True):
+            if os.path.splitext(n)[1].lower() in _IMG_EXT:
+                items.append({"name": n, "url": f"/photos/{n}"})
+        return jsonify({"photos": items})
+
+    @app.post("/api/photos")
+    def photos_upload():
+        files = request.files.getlist("file")
+        saved = []
+        for f in files:
+            if not f or not f.filename:
+                continue
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in _IMG_EXT:
+                continue
+            name = f"{int(time.time()*1000)}_{secure_filename(f.filename)}"
+            f.save(os.path.join(PHOTOS_DIR, name))
+            saved.append({"name": name, "url": f"/photos/{name}"})
+        return jsonify({"saved": saved}), 201
+
+    @app.post("/api/photos/post")
+    def photos_post():
+        data = request.get_json(silent=True) or {}
+        photo = str(data.get("photo", "")).strip()
+        caption = str(data.get("caption", "")).strip()
+        account_id = data.get("account_id")
+        if not photo or not account_id:
+            return jsonify({"error": "photo and account_id required"}), 400
+        account_id = int(account_id)
+        task = db.add_task(account_id=account_id, kind="post",
+                           title=(caption[:40] or "photo"), payload=caption, photo=photo)
+        when = str(data.get("when", "")).strip()
+        if when:  # schedule for later
+            db.update_task(task["id"], scheduled_for=when, status="scheduled")
+        else:  # publish now, off the request thread
+            def _work():
+                try:
+                    publish_task(db, task["id"])
+                except Exception as exc:  # noqa: BLE001
+                    db.record_event("run.error", str(exc)[:200], account_id, level="error")
+            threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"task": task, "scheduled": bool(when)}), 201
 
     # -- account KPI (growth, profile views, clicks, demographics) ----------
     @app.get("/api/kpi")

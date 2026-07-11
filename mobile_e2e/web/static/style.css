@@ -507,6 +507,19 @@ label.auto input { width: auto; margin: 0; }
 .wu-manual-text { flex: 1; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wu-actions .mini, .wu-manual-row .mini { flex-shrink: 0; }
 
+/* Photos (image posts) */
+.ph-actions { display: flex; align-items: center; gap: 14px; }
+.ph-upload { display: inline-block; cursor: pointer; font-weight: 600; font-size: 13.5px; color: #fff;
+  background: var(--grad); border-radius: var(--radius-sm); padding: 9px 16px; }
+.ph-upload:hover { filter: brightness(1.08); }
+.photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; margin-top: 16px; }
+.photo-card { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: rgba(255,255,255,.02); display: flex; flex-direction: column; }
+.photo-img { width: 100%; aspect-ratio: 3/4; object-fit: cover; background: #0006; }
+.photo-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.photo-cap { width: 100%; font-size: 13px; resize: vertical; }
+.photo-row { display: flex; gap: 8px; align-items: center; }
+.photo-acc { flex: 1; min-width: 0; font-size: 12.5px; padding: 6px; }
+
 /* Follow-ups (auto-comment under our own posts) */
 .fu-toggles { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .fu-max span { color: var(--amber); font-weight: 600; }

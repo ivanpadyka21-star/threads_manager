@@ -354,6 +354,32 @@ def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) ->
     return asyncio.run(_publish_async(text, credentials_file))
 
 
+async def _publish_image_async(text: str, image_url: str, credentials_file: str) -> str:
+    from pythreads.api import API, Media, MediaType
+    from pythreads.credentials import Credentials
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+    async with API(credentials=credentials) as api:
+        container_id = await api.create_container(
+            text=text or None, media=Media(type=MediaType.IMAGE, url=image_url))
+        published_id = await api.publish_container(container_id)
+        return str(published_id)
+
+
+def publish_image(image_url: str, text: str = "",
+                  credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
+    """Publish a photo post (image + caption) to Threads.
+
+    ``image_url`` must be publicly reachable (Threads downloads it). Uses the
+    ``threads_content_publish`` permission we already have.
+    """
+    if not image_url:
+        raise ValueError("image_url is required")
+    _ensure_ready(credentials_file)
+    return asyncio.run(_publish_image_async(text, image_url, credentials_file))
+
+
 async def _publish_reply_async(text: str, reply_to_id: str, credentials_file: str) -> str:
     from pythreads.api import API
     from pythreads.credentials import Credentials

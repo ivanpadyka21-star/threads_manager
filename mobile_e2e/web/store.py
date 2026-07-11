@@ -228,6 +228,8 @@ class Store:
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
         # Did the person reply back to OUR published reply? (engagement tracking)
         self._ensure_column("warmup_actions", "got_reply", "INTEGER DEFAULT 0")
+        # A photo filename (in data/photos/) to publish as an image post.
+        self._ensure_column("tasks", "photo", "TEXT DEFAULT ''")
 
     # -- account KPI insights -----------------------------------------------
     def snapshot_account_insight(self, account_id: int, **metrics) -> None:
@@ -426,6 +428,7 @@ class Store:
             "max_chars": (int(fields["max_chars"]) if fields.get("max_chars") else None),
             "archetype": fields.get("archetype", "").strip(),
             "theme": fields.get("theme", "").strip(),
+            "photo": fields.get("photo", "").strip(),
             "created_at": _now(),
             "updated_at": _now(),
         }
@@ -434,10 +437,10 @@ class Store:
                 """INSERT INTO tasks
                    (account_id, kind, title, payload, language, style, target,
                     status, deadline, reminder, scheduled_for, batch_id, max_chars,
-                    archetype, theme, created_at, updated_at)
+                    archetype, theme, photo, created_at, updated_at)
                    VALUES (:account_id, :kind, :title, :payload, :language, :style,
                            :target, :status, :deadline, :reminder, :scheduled_for,
-                           :batch_id, :max_chars, :archetype, :theme,
+                           :batch_id, :max_chars, :archetype, :theme, :photo,
                            :created_at, :updated_at)""",
                 cols,
             )

@@ -100,7 +100,7 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", kpi: "nav.kpi", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", followups: "nav.followups", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", kpi: "nav.kpi", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", followups: "nav.followups", photos: "nav.photos", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
@@ -110,6 +110,7 @@ function renderTab(name) {
   if (name === "studio") loadStudio();
   if (name === "warmup") loadWarmup();
   if (name === "followups") loadFollowups();
+  if (name === "photos") loadPhotos();
   if (name === "drops") loadDrops();
   if (name === "daily") loadDaily();
   if (name === "legends") loadLegends();
@@ -842,6 +843,53 @@ if (kpiRefreshBtn) kpiRefreshBtn.addEventListener("click", async () => {
     await jpost("/api/kpi/refresh", {});
     setTimeout(async () => { await loadKPI(); kpiRefreshBtn.disabled = false; kpiRefreshBtn.textContent = lbl; }, 6000);
   } catch { kpiRefreshBtn.disabled = false; kpiRefreshBtn.textContent = lbl; }
+});
+
+// --- Photos (image posts) --------------------------------------------------
+let photoAccounts = [];
+async function loadPhotos() {
+  if (!photoAccounts.length) {
+    try { photoAccounts = await api("/api/accounts"); } catch { photoAccounts = []; }
+  }
+  const d = await api("/api/photos").catch(() => ({ photos: [] }));
+  const grid = $("#photos-grid"); if (!grid) return;
+  grid.innerHTML = "";
+  if (!(d.photos || []).length) {
+    grid.append(emptyState(t("ph.empty"), t("ph.empty_hint"), "📸")); return;
+  }
+  d.photos.forEach(p => grid.append(renderPhotoCard(p)));
+}
+function renderPhotoCard(p) {
+  const card = el("div", { class: "photo-card" });
+  const img = el("img", { class: "photo-img", src: p.url, alt: "", loading: "lazy" });
+  card.append(img);
+  const body = el("div", { class: "photo-body" });
+  const ta = el("textarea", { class: "photo-cap", rows: 2, placeholder: t("ph.caption_ph") });
+  const sel = el("select", { class: "photo-acc" });
+  sel.innerHTML = photoAccounts.map(a => `<option value="${a.id}">${a.handle || a.name}</option>`).join("");
+  const row = el("div", { class: "photo-row" }, sel,
+    el("button", { class: "mini", text: t("ph.post"), onclick: async () => {
+      if (!ta.value.trim() && !confirm(t("ph.no_caption"))) return;
+      const r = await jpost("/api/photos/post", { photo: p.name, account_id: sel.value, caption: ta.value.trim() }).catch(e => ({ error: String(e) }));
+      if (r.error) toast(r.error, "error", 6000);
+      else toast(t("ph.posting"), "success", 4000);
+    } }));
+  body.append(ta, row);
+  card.append(body);
+  return card;
+}
+const phFile = $("#ph-file");
+if (phFile) phFile.addEventListener("change", async () => {
+  if (!phFile.files.length) return;
+  const st = $("#ph-up-status"); if (st) st.textContent = t("ph.uploading");
+  const fd = new FormData();
+  [...phFile.files].forEach(f => fd.append("file", f));
+  try {
+    const r = await fetch("/api/photos", { method: "POST", body: fd });
+    const j = await r.json();
+    if (st) st.textContent = t("ph.uploaded").replace("{n}", (j.saved || []).length);
+    phFile.value = ""; loadPhotos();
+  } catch (e) { if (st) st.textContent = String(e); }
 });
 
 // --- Follow-ups (auto-comment under our own posts, no spam) ----------------
