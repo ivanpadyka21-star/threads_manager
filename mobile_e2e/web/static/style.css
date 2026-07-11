@@ -507,6 +507,22 @@ label.auto input { width: auto; margin: 0; }
 .wu-manual-text { flex: 1; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wu-actions .mini, .wu-manual-row .mini { flex-shrink: 0; }
 
+/* Daily stability goal */
+.daily-goal-box { margin: 14px 0 4px; }
+.daily-goal-box:empty { display: none; }
+.dg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.dg-title { font-weight: 700; font-size: 15px; }
+.dg-badge { font: 11px "JetBrains Mono", monospace; letter-spacing: .08em; padding: 4px 11px; border-radius: 999px; color: var(--amber); background: rgba(255,176,32,.1); border: 1px solid rgba(255,176,32,.28); }
+.dg-badge.hit { color: #34d399; background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.3); }
+.dg-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+@media (max-width: 640px) { .dg-metrics { grid-template-columns: 1fr; } }
+.dg-cell { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; background: rgba(255,255,255,.02); }
+.dg-cell-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.dg-ic { font-size: 14px; } .dg-cur { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.dg-lab { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-left: auto; }
+.dg-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
+.dg-fill { height: 100%; width: 0; border-radius: 999px; transition: width 1s cubic-bezier(.4,0,.2,1); }
+
 /* Photos (image posts) */
 .ph-actions { display: flex; align-items: center; gap: 14px; }
 .ph-upload { display: inline-block; cursor: pointer; font-weight: 600; font-size: 13.5px; color: #fff;

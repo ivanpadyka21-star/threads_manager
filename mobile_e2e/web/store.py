@@ -325,6 +325,39 @@ class Store:
             "updated_age": self.setting_age_seconds("account_insights_last"),
         }
 
+    def daily_goal(self) -> dict:
+        """Today's stability goal across the priority metrics: followers, likes,
+        clicks. Targets are what we must hit EVERY day to grow steadily — chosen
+        to be achievable first, then developmental. Progress is today's gain."""
+        from collections import defaultdict
+        today = _today()
+        with self._lock:
+            snaps = [dict(r) for r in self._conn.execute(
+                "SELECT account_id, date, followers, clicks FROM account_insights ORDER BY date"
+            ).fetchall()]
+            likes_today = self._conn.execute(
+                "SELECT COALESCE(SUM(likes),0) FROM tasks WHERE kind='post' "
+                "AND published_id != '' AND substr(updated_at,1,10)=?", (today,)
+            ).fetchone()[0] or 0
+        by_acc = defaultdict(list)
+        for s in snaps:
+            by_acc[s["account_id"]].append(s)
+        foll_today = clicks_today = 0
+        for acc, rows in by_acc.items():
+            if len(rows) >= 2:
+                foll_today += max(0, rows[-1]["followers"] - rows[-2]["followers"])
+                clicks_today += max(0, rows[-1]["clicks"] - rows[-2]["clicks"])
+
+        def _m(key, cur, default):
+            target = int(self.get_setting(f"goal_day_{key}", str(default)) or default)
+            return {"cur": int(cur), "target": target,
+                    "pct": min(100, round(cur * 100 / target)) if target else 0}
+        return {
+            "followers": _m("followers", foll_today, 30),
+            "likes": _m("likes", likes_today, 50),
+            "clicks": _m("clicks", clicks_today, 25),
+        }
+
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
         with self._lock, self._conn:
             cols = {

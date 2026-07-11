@@ -1122,12 +1122,17 @@ function miniGoal(cur, target, pct, label, cls) {
 }
 function renderDropCard(d) {
   const met = d.met;
-  const card = el("div", { class: "panel drop-card " + (d.status === "running" ? "running" : (met ? "met" : "notmet")) });
-  const status = d.status === "running" ? t("drop.st.running") : (met ? t("drop.st.met") : (d.pct_views != null ? t("drop.st.notmet") : t("drop.st.measured")));
+  // Always a clear status: running / stopped / finished(hit|miss).
+  let stCls, stText;
+  if (d.status === "cancelled") { stCls = "stopped"; stText = t("drop.st.stopped"); }
+  else if (d.status === "running") { stCls = "run"; stText = t("drop.st.running"); }
+  else if (met) { stCls = "met"; stText = t("drop.st.finished_hit"); }
+  else { stCls = "notmet"; stText = t("drop.st.finished_miss"); }
+  const card = el("div", { class: "panel drop-card " + stCls });
   card.append(el("div", { class: "drop-head" },
     el("div", {}, el("div", { class: "drop-label", text: d.label || ("#" + d.id) }),
       el("div", { class: "drop-when", text: (d.created_at || "").replace("T", " ").slice(0, 16) })),
-    el("span", { class: "drop-badge " + (met ? "met" : (d.status === "running" ? "run" : "notmet")), text: status })));
+    el("span", { class: "drop-badge " + stCls, text: stText })));
   // goals
   const goals = el("div", { class: "drop-goals" });
   goals.append(miniGoal(d.views, d.goal_views, d.pct_views, t("col.views"), "v"));
@@ -1661,9 +1666,39 @@ async function loadDashGoals() {
       goalCard({ title: t("goal.main.views"), cur: d.goal.views, target: d.goal.target_views, unit: t("unit.views"), sub: t("goal.window"), c1: "#b14bff", c2: "#22d3c5" }),
       goalCard({ title: t("goal.main.comments"), cur: d.goal.comments, target: d.goal.target_comments, unit: t("unit.comments"), sub: t("goal.window"), c1: "#ff2e7e", c2: "#b14bff" }),
     );
-    if (d.drop && d.drop.posts)
-      g.append(goalCard({ title: t("goal.drop"), cur: d.drop.views, target: d.drop.target_views || 1, unit: t("unit.views"), sub: `💬 ${d.drop.comments}/${d.drop.target_comments} · ${d.drop.posts} ${t("stats.posts")}`, c1: "#22d3c5", c2: "#3b82f6" }));
+    renderDailyGoal(d.daily_goal);
   } catch (e) { g.innerHTML = ""; }
+}
+// Daily stability goal: what we must hit EVERY day to grow (follows/likes/clicks).
+function renderDailyGoal(dg) {
+  const box = $("#daily-goal"); if (!box) return;
+  if (!dg) { box.innerHTML = ""; return; }
+  const defs = [
+    { k: "followers", lab: t("dg.followers"), icon: "➕", c: "#ff2e7e" },
+    { k: "likes", lab: t("dg.likes"), icon: "❤", c: "#b14bff" },
+    { k: "clicks", lab: t("dg.clicks"), icon: "🔗", c: "#22d3c5" },
+  ];
+  const hit = defs.every(x => (dg[x.k] || {}).pct >= 100);
+  box.innerHTML = "";
+  box.append(el("div", { class: "dg-head" },
+    el("span", { class: "dg-title", text: t("dg.title") }),
+    el("span", { class: "dg-badge " + (hit ? "hit" : ""), text: hit ? t("dg.done") : t("dg.push") })));
+  const row = el("div", { class: "dg-metrics" });
+  defs.forEach(def => {
+    const m = dg[def.k] || { cur: 0, target: 0, pct: 0 };
+    const cell = el("div", { class: "dg-cell" });
+    cell.append(el("div", { class: "dg-cell-top" },
+      el("span", { class: "dg-ic", text: def.icon }),
+      el("b", { class: "dg-cur", text: `${fmtNum(m.cur)} / ${fmtNum(m.target)}` }),
+      el("span", { class: "dg-lab", text: def.lab })));
+    const track = el("div", { class: "dg-bar" });
+    const fill = el("div", { class: "dg-fill" });
+    fill.style.background = `linear-gradient(90deg, ${def.c}, ${def.c}99)`;
+    if (window.__liveRefresh) fill.style.width = m.pct + "%";
+    else setTimeout(() => { fill.style.width = m.pct + "%"; }, 60);
+    track.append(fill); cell.append(track); row.append(cell);
+  });
+  box.append(row);
 }
 
 // --- audit (grouped by day) ------------------------------------------------
