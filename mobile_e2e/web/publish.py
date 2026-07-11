@@ -14,8 +14,11 @@ from mobile_e2e.web import threads_client
 # Threads rejects posts longer than this; we truncate as a last-resort guard.
 THREADS_MAX_CHARS = 500
 
-# Where uploaded photos live (published as image posts).
-PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "data", "photos")
+# Where photos live (published as image posts). Defaults to a "амелия" folder on
+# the owner's Desktop so she can just drop a batch of photos in and they show up
+# in the dashboard — no upload step. Override with E2E_PHOTOS_DIR.
+PHOTOS_DIR = os.environ.get("E2E_PHOTOS_DIR") or os.path.join(
+    os.path.expanduser("~"), "Desktop", "амелия")
 
 
 def _clamp(text: str, limit: int = THREADS_MAX_CHARS) -> str:
