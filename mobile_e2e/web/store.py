@@ -303,11 +303,23 @@ class Store:
         per_account.sort(key=lambda x: x["followers"], reverse=True)
         follower_series = [{"date": d, "value": follower_by_date[d]}
                            for d in sorted(follower_by_date)]
+
+        # Priority-aligned growth goals (the new vector): follows > likes > clicks.
+        def _goal(key, cur, default):
+            target = int(self.get_setting(f"goal_{key}", str(default)) or default)
+            return {"cur": cur, "target": target,
+                    "pct": min(100, round(cur * 100 / target)) if target else 0}
+        goals = {
+            "followers": _goal("followers", totals["followers"], 1000),
+            "likes": _goal("likes", totals["likes"], 5000),
+            "clicks": _goal("clicks", totals["clicks"], 500),
+        }
         return {
             "totals": totals,
             "engagement": totals["likes"] + totals["replies"] + totals["reposts"] + totals["quotes"],
             "accounts": per_account,
             "follower_series": follower_series,
+            "goals": goals,
             "updated_age": self.setting_age_seconds("account_insights_last"),
         }
 

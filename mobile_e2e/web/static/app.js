@@ -734,6 +734,29 @@ async function loadKPI() {
       kpiHeroCard(d.engagement, t("kpi.engagement"), "🔥", "#b14bff", "#22d3c5"),
       kpiHeroCard(d.totals.clicks, t("kpi.clicks"), "🔗", "#ffb020", "#ff2e7e"));
   }
+  // priority growth goals (new vector): followers > likes > clicks
+  const gw = $("#kpi-goals");
+  if (gw && d.goals) {
+    gw.innerHTML = "";
+    const defs = [
+      { k: "followers", lab: t("kpi.goal.followers"), c: "#ff2e7e" },
+      { k: "likes", lab: t("kpi.goal.likes"), c: "#b14bff" },
+      { k: "clicks", lab: t("kpi.goal.clicks"), c: "#22d3c5" },
+    ];
+    defs.forEach(def => {
+      const g = d.goals[def.k]; if (!g) return;
+      const row = el("div", { class: "kpi-goal" });
+      row.append(el("div", { class: "kpi-goal-top" },
+        el("span", { class: "kpi-goal-l", text: def.lab }),
+        el("span", { class: "kpi-goal-v", text: `${fmtNum(g.cur)} / ${fmtNum(g.target)} · ${g.pct}%` })));
+      const track = el("div", { class: "kpi-goal-track" });
+      const fill = el("div", { class: "kpi-goal-fill" });
+      fill.style.background = `linear-gradient(90deg, ${def.c}, ${def.c}88)`;
+      if (window.__liveRefresh) fill.style.width = g.pct + "%";
+      else setTimeout(() => { fill.style.width = g.pct + "%"; }, 60);
+      track.append(fill); row.append(track); gw.append(row);
+    });
+  }
   const upd = $("#kpi-updated");
   if (upd) upd.textContent = d.updated_age == null ? t("kpi.never") : t("kpi.updated").replace("{ago}", fmtAgo(d.updated_age));
 
