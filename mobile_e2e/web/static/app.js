@@ -1122,17 +1122,22 @@ function miniGoal(cur, target, pct, label, cls) {
 }
 function renderDropCard(d) {
   const met = d.met;
-  // Always a clear status: running / stopped / finished(hit|miss).
+  const total = (d.posts || []).length;
+  const publishedCount = (d.posts || []).filter(p => p.published).length;
+  // Status by FACT: still publishing → running; all out → finished (hit/miss);
+  // cancelled → stopped. Never say "finished" while posts are still queued.
   let stCls, stText;
   if (d.status === "cancelled") { stCls = "stopped"; stText = t("drop.st.stopped"); }
-  else if (d.status === "running") { stCls = "run"; stText = t("drop.st.running"); }
+  else if (publishedCount < total) { stCls = "run"; stText = t("drop.st.running"); }
   else if (met) { stCls = "met"; stText = t("drop.st.finished_hit"); }
   else { stCls = "notmet"; stText = t("drop.st.finished_miss"); }
   const card = el("div", { class: "panel drop-card " + stCls });
   card.append(el("div", { class: "drop-head" },
     el("div", {}, el("div", { class: "drop-label", text: d.label || ("#" + d.id) }),
       el("div", { class: "drop-when", text: (d.created_at || "").replace("T", " ").slice(0, 16) })),
-    el("span", { class: "drop-badge " + stCls, text: stText })));
+    el("div", { class: "drop-head-r" },
+      el("span", { class: "drop-count", text: `📤 ${publishedCount}/${total} ${t("drop.out")}` }),
+      el("span", { class: "drop-badge " + stCls, text: stText }))));
   // goals
   const goals = el("div", { class: "drop-goals" });
   goals.append(miniGoal(d.views, d.goal_views, d.pct_views, t("col.views"), "v"));
@@ -1150,21 +1155,25 @@ function renderDropCard(d) {
     d.per_account.forEach(a => pa.append(el("span", { class: "pa-chip", text: `${a.account}: ${fmtNum(a.views)}👁 ${a.comments}💬` })));
     card.append(pa);
   }
-  // expandable per-post breakdown (успешно / нет)
+  // expandable per-post breakdown: ⏳ ждёт / ✅ вышел-ок / ⚠️ вышел-слабо
   if (d.posts && d.posts.length) {
     const share = d.goal_views && d.posts.length ? d.goal_views / d.posts.length : null;
-    const okCount = d.posts.filter(p => share ? p.views >= share : p.views >= (d.avg_views || 0)).length;
+    const isOk = p => p.published && (share ? p.views >= share : p.views >= (d.avg_views || 0));
+    const okCount = d.posts.filter(isOk).length;
+    const waitCount = d.posts.filter(p => !p.published).length;
+    const weakCount = d.posts.length - okCount - waitCount;
     const open = expandedDrops.has(d.id);
     const toggle = el("button", { class: "drop-toggle" },
       el("span", { class: "dt-arrow", text: open ? "▾" : "▸" }),
       el("span", { text: tf("drop.posts", { n: d.posts.length }) }),
-      el("span", { class: "dt-ok", text: `✅ ${okCount} · ⚠️ ${d.posts.length - okCount}` }));
+      el("span", { class: "dt-ok", text: `✅ ${okCount} · ⚠️ ${weakCount} · ⏳ ${waitCount}` }));
     const list = el("div", { class: "drop-posts" + (open ? "" : " hidden") });
     d.posts.forEach(p => {
-      const ok = share ? p.views >= share : p.views >= (d.avg_views || 0);
-      list.append(el("div", { class: "dp " + (ok ? "ok" : "bad") },
-        el("span", { class: "dp-mark", text: ok ? "✅" : "⚠️" }),
-        el("span", { class: "dp-when", text: p.when || "" }),
+      const mark = !p.published ? "⏳" : (isOk(p) ? "✅" : "⚠️");
+      const cls = !p.published ? "wait" : (isOk(p) ? "ok" : "bad");
+      list.append(el("div", { class: "dp " + cls },
+        el("span", { class: "dp-mark", text: mark }),
+        el("span", { class: "dp-when", text: p.published ? t("drop.sent") : (p.when || "") }),
         el("span", { class: "dp-acc", text: p.account }),
         el("span", { class: "dp-stat", text: `${fmtNum(p.views)}👁` }),
         el("span", { class: "dp-stat", text: `${p.replies}💬` }),
