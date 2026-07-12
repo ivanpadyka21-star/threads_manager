@@ -185,7 +185,39 @@ document.addEventListener("click", (e) => {
 loadNotifications(); setInterval(loadNotifications, 5000);
 
 // --- dashboard -------------------------------------------------------------
+async function loadDailyBrief() {
+  const box = $("#da-brief"); const btn = $("#da-run"); if (!box) return;
+  let d; try { d = await api("/api/daily-analysis"); } catch { return; }
+  if (btn) {
+    btn.disabled = !!d.running;
+    btn.textContent = d.running ? t("da.running") : t("da.run");
+  }
+  if (!d.brief) { box.innerHTML = `<div class="da-empty">${t("da.empty")}</div>`; return; }
+  const b = d.brief;
+  box.innerHTML = "";
+  box.append(el("div", { class: "da-when", text: t("da.done").replace("{ago}", d.age == null ? "" : fmtAgo(d.age)) }));
+  if (b.analysis) box.append(el("div", { class: "da-block" },
+    el("div", { class: "da-lbl", text: t("da.analysis") }), el("p", { text: b.analysis })));
+  if (b.strategy) box.append(el("div", { class: "da-block" },
+    el("div", { class: "da-lbl", text: t("da.strategy") }), el("p", { text: b.strategy })));
+  if (b.drop_id) box.append(el("div", { class: "da-drop" },
+    el("span", { text: t("da.drop").replace("{n}", b.posts) }),
+    el("button", { class: "mini", text: t("da.open"), onclick: () => showTab("drops") })));
+}
+const daRun = $("#da-run");
+if (daRun) daRun.addEventListener("click", async () => {
+  daRun.disabled = true; daRun.textContent = t("da.running");
+  try {
+    await jpost("/api/daily-analysis", {});
+    toast(t("da.started"), "success", 5000);
+    let n = 0; const poll = setInterval(async () => {
+      const d = await api("/api/daily-analysis").catch(() => ({}));
+      if (!d.running || ++n > 60) { clearInterval(poll); loadDailyBrief(); loadDrops && loadDrops(); }
+    }, 4000);
+  } catch (e) { toast(String(e), "error", 6000); daRun.disabled = false; daRun.textContent = t("da.run"); }
+});
 async function loadDashboard() {
+  loadDailyBrief();
   loadDashGoals();
   const [stats, analytics, trend, reminders] = await Promise.all([
     api("/api/stats"), api("/api/analytics?hours=24"),

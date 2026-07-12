@@ -386,11 +386,8 @@ def evaluate_drop(store, drop_id: int, agent_factory=None) -> Optional[str]:
         return None
     store.update_drop(drop_id, verdict=verdict, status="evaluated")
     store.log("drop.evaluate", f"#{drop_id}", None)
-    # Self-learning: fold this fresh verdict into the evolving playbook.
-    try:
-        evolve_strategist(store, agent_factory=agent_factory)
-    except Exception as exc:  # noqa: BLE001 - never block the verdict on evolution
-        LOG.warning("strategist evolve failed: %s", exc)
+    # (Self-learning is now folded into the once-a-day analysis — no auto-evolve
+    # here, so GPT-5.5 runs deliberately once a day, not on every verdict.)
     return verdict
 
 
@@ -409,6 +406,113 @@ EVOLVE_SYSTEM = (
     "NOT contradict the owner's rules; refine tactics under them. Output ONLY the "
     "numbered lessons."
 )
+
+
+DAILY_ANALYSIS_SYSTEM = (
+    "You are the HEAD content strategist running the ONCE-A-DAY full analysis for "
+    "an SMM creator (adult, private opted-in 18+, her own real identity). This is "
+    "the ONLY deep pass today — make it count, high quality, coherent, one voice. "
+    "OUR VECTOR: make a man WANT HER as a woman → visit profile → LIKE, FOLLOW, "
+    "click the bio link. Priorities: followers > likes > clicks > views > "
+    "comments. Given the data (our results by priority, top posts by LIKES, flops, "
+    "competitor intel, goal progress, past verdicts), do a full A-to-Z: an honest "
+    "analysis (what worked/failed by likes+follows and WHY — say 'вот тут проеб'), "
+    "the day's strategy (sharp angle), and the day's POSTS. Posts DNA: light "
+    "lewdness + a note of lack/longing/desire + her personality; first person; "
+    "≤1 emoji; NEVER debate questions to men; simple, unashamed, not crude "
+    "pornographic. Aim EACH post to be a legend candidate (likes + follows). "
+    "Return STRICT JSON only: {\"analysis\": \"5-8 sentences RU\", \"strategy\": "
+    "\"2-3 sentences RU\", \"posts\": [{\"account\": \"handle or ''\", \"text\": "
+    "\"the post in Ukrainian\"}] }. No prose outside JSON."
+)
+
+
+def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
+    """The once-a-day A-to-Z pass: ONE deep GPT-5.5 call → analysis + strategy +
+    the day's posts → a scheduled drop. Replaces the scattered auto-triggers so
+    the strategist runs deliberately once (cheap + coherent)."""
+    import json as _json
+    from datetime import datetime, timedelta
+    from mobile_e2e.web.store import _TZ
+
+    try:
+        refresh_metrics(store, limit=200)
+    except Exception:  # noqa: BLE001
+        pass
+
+    top = store.top_posts(by="likes", limit=8)
+    flops = [p for p in store.top_posts(by="views", limit=120)
+             if (p.get("views") or 0) > 0 and (p.get("likes") or 0) <= 2][:5]
+    feed = store.feed_insights().get("text", "")
+    dg = store.daily_goal()
+    kpi = store.account_kpi().get("goals", {})
+    verdicts = [d.get("verdict") for d in store.list_drops() if d.get("verdict")][:3]
+    rules = store.get_setting(S_RULES, DEFAULTS[S_RULES])
+
+    def _p(p):
+        return (f"{p.get('likes',0)}❤ {p.get('views',0)}👁 {p.get('replies',0)}💬: "
+                f"«{(p.get('payload') or p.get('title') or '')[:80]}»")
+
+    def _g(m):
+        x = kpi.get(m, {})
+        return f"{x.get('cur',0)}/{x.get('target',0)}"
+
+    context = "\n".join([x for x in [
+        f"OWNER RULES (obey): {rules}",
+        f"TODAY'S GOAL: подписки {dg['followers']['cur']}/{dg['followers']['target']}, "
+        f"лайки {dg['likes']['cur']}/{dg['likes']['target']}, клики {dg['clicks']['cur']}/{dg['clicks']['target']}",
+        f"30-DAY: подписки {_g('followers')}, лайки {_g('likes')}, клики {_g('clicks')}",
+        "=== TOP POSTS BY LIKES (what pulls desire) ===",
+        *[f"  {_p(p)}" for p in top],
+        ("=== FLOPS (views but ~no likes — the wrong vector) ===\n"
+         + "\n".join(f"  {_p(p)}" for p in flops)) if flops else "",
+        f"=== COMPETITOR INTEL ===\n{feed[:900]}" if feed else "",
+        ("=== RECENT DROP VERDICTS ===\n" + "\n".join(f"  - {v}" for v in verdicts)) if verdicts else "",
+        f"TASK: full daily analysis + strategy + {count} posts for today. STRICT JSON only.",
+    ] if x])
+
+    factory = agent_factory or (lambda sp: make_agent(sp, role="strategist"))
+    raw = factory(DAILY_ANALYSIS_SYSTEM).generate_response(context)
+    data = _extract_json(raw)
+    analysis = str(data.get("analysis", "")).strip()
+    strat = str(data.get("strategy", "")).strip()
+    posts = [p for p in (data.get("posts") or [])
+             if isinstance(p, dict) and str(p.get("text", "")).strip()][:count]
+
+    hmap = {(a.get("handle") or "").lstrip("@").lower(): a["id"]
+            for a in store.list_accounts() if a.get("handle")}
+    strong = [6, 4, 1, 5]  # sex777777amelia, _.amelka_7777, 0000wwwqt, amelia.07070
+    task_ids = []
+    for i, p in enumerate(posts):
+        h = str(p.get("account", "")).lstrip("@").lower()
+        acc = hmap.get(h) or strong[i % len(strong)]
+        text = p["text"].strip()
+        t = store.add_task(account_id=acc, kind="post", title=text[:40], payload=text)
+        task_ids.append(t["id"])
+
+    now = datetime.now(_TZ).replace(tzinfo=None, second=0, microsecond=0)
+    start = now + timedelta(minutes=15)
+    end = now.replace(hour=23, minute=0)
+    if end <= start:
+        end = start + timedelta(hours=6)
+    step = (end - start) / max(1, len(task_ids) - 1)
+    for i, tid in enumerate(task_ids):
+        store.update_task(tid, scheduled_for=(start + step * i).isoformat(timespec="minutes"))
+        store.set_task_status(tid, "scheduled")
+
+    did = None
+    if task_ids:
+        label = f"Анализ дня {now:%d.%m}"
+        drop = store.add_drop(label=label, goal_views=count * 400,
+                              goal_comments=count * 8, task_ids=task_ids)
+        did = drop["id"] if isinstance(drop, dict) else drop
+
+    brief = {"analysis": analysis, "strategy": strat, "drop_id": did,
+             "posts": len(task_ids), "at": now.isoformat(timespec="minutes")}
+    store.set_setting("daily_brief", _json.dumps(brief, ensure_ascii=False))
+    store.mark_heartbeat("daily_brief_at")
+    store.log("daily.analysis", f"drop #{did}, {len(task_ids)} posts", None)
+    return brief
 
 
 def evolve_strategist(store, agent_factory=None, min_views: int = 300) -> Optional[str]:

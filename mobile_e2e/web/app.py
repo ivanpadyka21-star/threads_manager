@@ -421,6 +421,35 @@ def create_app(
             db.set_setting(S_RULES, str(data.get("rules") or ""))
         return jsonify(get_strategy_settings(db))
 
+    # -- once-a-day full analysis (A-to-Z: analysis + strategy + drop) -------
+    @app.get("/api/daily-analysis")
+    def daily_analysis_get():
+        raw = db.get_setting("daily_brief", "")
+        brief = json.loads(raw) if raw else None
+        return jsonify({"brief": brief,
+                        "age": db.setting_age_seconds("daily_brief_at"),
+                        "running": bool(getattr(app, "_daily_running", False))})
+
+    @app.post("/api/daily-analysis")
+    def daily_analysis_run():
+        if getattr(app, "_daily_running", False):
+            return jsonify({"error": "already running"}), 409
+        data = request.get_json(silent=True) or {}
+        count = int(data.get("count") or 10)
+        app._daily_running = True
+
+        def _work():
+            try:
+                from mobile_e2e.web import strategy as _st
+                _st.run_daily_analysis(db, count=count)
+            except Exception as exc:  # noqa: BLE001
+                db.record_event("daily.error", str(exc)[:200], None, level="error")
+            finally:
+                app._daily_running = False
+
+        threading.Thread(target=_work, daemon=True).start()
+        return jsonify({"started": True}), 202
+
     @app.post("/api/strategy/evolve")
     def strategy_evolve():
         def _work():
