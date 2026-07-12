@@ -23,11 +23,15 @@ def stage(path: str, expiry: str = "1h") -> str:
     """
     if not os.path.exists(path):
         raise FileNotFoundError(path)
+    # Send a plain ASCII upload name (local files may be named in Cyrillic, which
+    # breaks the multipart filename); keep the real extension.
+    ext = os.path.splitext(path)[1].lower() or ".png"
+    upload_name = f"photo{ext}"
     with open(path, "rb") as f:
         r = requests.post(
             LITTERBOX,
             data={"reqtype": "fileupload", "time": expiry},
-            files={"fileToUpload": (os.path.basename(path), f)},
+            files={"fileToUpload": (upload_name, f)},
             timeout=90,
         )
     r.raise_for_status()

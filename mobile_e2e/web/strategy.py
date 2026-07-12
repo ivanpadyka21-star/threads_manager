@@ -396,15 +396,18 @@ def evaluate_drop(store, drop_id: int, agent_factory=None) -> Optional[str]:
 
 EVOLVE_SYSTEM = (
     "You are the content strategist EVOLVING YOUR OWN PLAYBOOK from real results. "
-    "You are given our winning posts (high views/reply-rate), our flops, and recent "
-    "drop verdicts. Distil what CONSISTENTLY works and what to STOP doing into a "
-    "tight, durable playbook of 6-9 concrete lessons in Russian — imperative, "
-    "specific, no fluff (e.g. 'бинарный выбор с риском для самолюбия бьёт сильнее "
-    "открытого вопроса'; 'обращение к дівчата убивает охват — целься в мужчин'). "
-    "Focus on EMOTION and MALE psychology (our audience is men). This playbook is "
-    "injected into every future post, so keep it sharp and general (patterns, not "
-    "one-off wording). Do NOT contradict the owner's rules; refine tactics under "
-    "them. Output ONLY the numbered lessons."
+    "OUR VECTOR: make a man WANT HER as a woman → profile → LIKE, FOLLOW, click "
+    "the bio link. Judge 'winning' by that — FOLLOWERS, LIKES, clicks — NOT by "
+    "comments. A post that farmed comments with a debate question but got few "
+    "likes/follows is a FAIL to LEARN FROM, not a win to copy. Given our posts, "
+    "flops and drop verdicts, distil a tight, durable playbook of 6-9 concrete "
+    "lessons in Russian — imperative, specific, no fluff (e.g. 'лёгкая пошлість + "
+    "натяк на нестачу близькості даёт лайки и подписки'; 'фото + короткий чуттєвий "
+    "текст бьёт сильнее вопроса'; 'НЕ задавать дебаты-вопросы мужчинам'). Focus on "
+    "DESIRE + a woman's personality/photo; audience is men who must want HER. This "
+    "playbook is injected into every future post — keep it sharp and general. Do "
+    "NOT contradict the owner's rules; refine tactics under them. Output ONLY the "
+    "numbered lessons."
 )
 
 
@@ -415,9 +418,11 @@ def evolve_strategist(store, agent_factory=None, min_views: int = 300) -> Option
     ``S_LESSONS``, which ``build_context``/``_draft`` inject under the owner rules.
     This is the self-development loop: results → lessons → better next posts.
     """
-    winners = store.top_posts(by="views", limit=8)
+    # Winners by LIKES (our priority signal), not views — the new vector rewards
+    # desire (likes/follows), not comment-farming.
+    winners = store.top_posts(by="likes", limit=8)
     flops = [p for p in store.top_posts(by="views", limit=200)
-             if (p.get("views") or 0) > 0][-6:]
+             if (p.get("views") or 0) > 0 and (p.get("likes") or 0) <= 2][-6:]
     verdicts = [d.get("verdict") for d in store.list_drops() if d.get("verdict")][:6]
 
     def _fmt(p):
