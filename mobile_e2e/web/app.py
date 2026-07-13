@@ -138,7 +138,7 @@ def create_app(
         cfg = get_strategy_settings(db)
         data = db.stats_full(goal_views=cfg["goal_views"], goal_comments=cfg["goal_comments"])
         data["daily_goal"] = db.daily_goal()
-        data["deltas"] = db.daily_deltas()
+        data["deltas"] = db.portfolio_deltas()
         return jsonify(data)
 
     @app.get("/api/daily")

@@ -358,35 +358,91 @@ class Store:
             "clicks": _m("clicks", clicks_today, 25),
         }
 
-    def daily_deltas(self) -> dict:
-        """Day-over-day change across the whole portfolio for each priority
-        metric — the honest "было X → +Δ → стало Y" numbers. Computed per
-        account (last two snapshots) then summed, so a partial refresh (only
-        some accounts captured today) can't fake a drop."""
+    def _period_deltas_raw(self) -> dict:
+        """Portfolio "было X → +Δ → стало Y" numbers for THREE periods at once:
+        today, yesterday and the last 7 days. Computed per account then summed,
+        so a partial refresh (only some accounts captured) can't fake a drop.
+        Also counts posts published in each period."""
         from collections import defaultdict
+        from datetime import date, timedelta
         metrics = ("followers", "profile_views", "likes", "clicks", "replies")
         with self._lock:
             snaps = [dict(r) for r in self._conn.execute(
                 "SELECT account_id, date, followers, profile_views, likes, clicks, replies "
                 "FROM account_insights ORDER BY date"
             ).fetchall()]
+            pub_dates = [r["d"] for r in self._conn.execute(
+                "SELECT substr(updated_at,1,10) d FROM tasks "
+                "WHERE published_id != '' AND published_id IS NOT NULL"
+            ).fetchall()]
         by_acc = defaultdict(list)
         for s in snaps:
             by_acc[s["account_id"]].append(s)
-        cur_tot = {m: 0 for m in metrics}
-        delta_tot = {m: 0 for m in metrics}
-        for rows in by_acc.values():
-            last = rows[-1]
-            prev = rows[-2] if len(rows) >= 2 else None
+        latest_date = snaps[-1]["date"] if snaps else None
+        week_cut = None
+        if latest_date:
+            try:
+                week_cut = (date.fromisoformat(latest_date) - timedelta(days=7)).isoformat()
+            except ValueError:
+                week_cut = None
+
+        def _blank():
+            return {"cur": {m: 0 for m in metrics}, "delta": {m: 0 for m in metrics}}
+        per = {"today": _blank(), "yesterday": _blank(), "week": _blank()}
+
+        def _acc(bucket, cur_row, prev_row):
             for m in metrics:
-                cur_tot[m] += int(last.get(m) or 0)
-                if prev is not None:
-                    delta_tot[m] += int(last.get(m) or 0) - int(prev.get(m) or 0)
-        return {
-            "date": snaps[-1]["date"] if snaps else None,
-            "metrics": {m: {"cur": cur_tot[m], "delta": delta_tot[m],
-                            "prev": cur_tot[m] - delta_tot[m]} for m in metrics},
-        }
+                bucket["cur"][m] += int(cur_row.get(m) or 0)
+                if prev_row is not None:
+                    bucket["delta"][m] += int(cur_row.get(m) or 0) - int(prev_row.get(m) or 0)
+
+        for rows in by_acc.values():
+            n = len(rows)
+            if n >= 1:
+                _acc(per["today"], rows[-1], rows[-2] if n >= 2 else None)
+                base = None  # week baseline: last snapshot on/before (latest-7d), else start
+                if week_cut:
+                    older = [r for r in rows if r["date"] <= week_cut]
+                    base = older[-1] if older else (rows[0] if rows[0]["date"] != rows[-1]["date"] else None)
+                _acc(per["week"], rows[-1], base)
+            if n >= 2:
+                _acc(per["yesterday"], rows[-2], rows[-3] if n >= 3 else None)
+
+        # posts per period (by publish date)
+        try:
+            today_d = date.fromisoformat(_today())
+        except ValueError:
+            today_d = date.today()
+        t_key, y_key = today_d.isoformat(), (today_d - timedelta(days=1)).isoformat()
+        week_start = (today_d - timedelta(days=6)).isoformat()
+        posts = {"today": 0, "yesterday": 0, "week": 0}
+        for d in pub_dates:
+            if not d:
+                continue
+            if d == t_key:
+                posts["today"] += 1
+            if d == y_key:
+                posts["yesterday"] += 1
+            if d >= week_start:
+                posts["week"] += 1
+
+        out = {"date": latest_date}
+        for k, b in per.items():
+            out[k] = {
+                "metrics": {m: {"cur": b["cur"][m], "delta": b["delta"][m],
+                                "prev": b["cur"][m] - b["delta"][m]} for m in metrics},
+                "posts": posts[k],
+            }
+        return out
+
+    def portfolio_deltas(self) -> dict:
+        """All three periods (today / yesterday / week) for the dashboard toggle."""
+        return self._period_deltas_raw()
+
+    def daily_deltas(self) -> dict:
+        """Today's day-over-day change — used by the once-a-day strategist pass."""
+        d = self._period_deltas_raw()
+        return {"date": d.get("date"), "metrics": d["today"]["metrics"]}
 
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
         with self._lock, self._conn:

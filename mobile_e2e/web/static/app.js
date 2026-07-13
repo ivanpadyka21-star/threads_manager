@@ -1681,17 +1681,37 @@ function goalCard({ title, cur, target, unit, sub, c1, c2 }) {
   countUp(pctNum, pct); countUp(curNum, cur);
   return card;
 }
-// Day-over-day deltas: было X → +Δ → стало Y, per priority metric.
-function renderDeltas(dx, day) {
+// Deltas: было X → +Δ → стало Y, per priority metric, for a selectable period.
+let deltaPeriod = "today";
+let deltaData = null;
+const DELTA_PERIODS = [
+  { k: "today", lab: "delta.today" },
+  { k: "yesterday", lab: "delta.yesterday" },
+  { k: "week", lab: "delta.week" },
+];
+function renderDeltas(dx) {
+  if (dx) deltaData = dx;
   const box = $("#stats-deltas"); if (!box) return;
+  // period toggle
+  const tabs = $("#stats-delta-tabs");
+  if (tabs) {
+    tabs.innerHTML = "";
+    DELTA_PERIODS.forEach(p => tabs.append(el("button", {
+      class: "delta-tab" + (p.k === deltaPeriod ? " active" : ""),
+      text: t(p.lab),
+      onclick: () => { deltaPeriod = p.k; renderDeltas(); },
+    })));
+  }
   box.innerHTML = "";
-  const m = (dx && dx.metrics) || {};
+  const P = (deltaData && deltaData[deltaPeriod]) || { metrics: {}, posts: 0 };
+  const m = P.metrics || {};
   const defs = [
     { k: "followers", lab: t("dg.followers"), icon: "➕", c: "#ff2e7e" },
     { k: "likes", lab: t("dg.likes"), icon: "❤", c: "#b14bff" },
     { k: "clicks", lab: t("dg.clicks"), icon: "🔗", c: "#22d3c5" },
     { k: "profile_views", lab: t("stats.profileviews"), icon: "👁", c: "#3b82f6" },
   ];
+  const suffix = deltaPeriod === "week" ? t("delta.7d") : t("delta.day");
   defs.forEach(def => {
     const v = m[def.k] || { cur: 0, prev: 0, delta: 0 };
     const up = v.delta > 0, flat = v.delta === 0;
@@ -1706,17 +1726,15 @@ function renderDeltas(dx, day) {
       el("b", { text: `${up ? "+" : ""}${fmtNum(v.delta)}` })));
     box.append(card);
   });
-  if (day) {
-    const card = el("div", { class: "delta-card" });
-    card.style.setProperty("--dc", "#ffb020");
-    card.append(el("div", { class: "delta-top" },
-      el("span", { class: "delta-ic", text: "🚀" }),
-      el("span", { class: "delta-lab", text: t("stats.posts") })));
-    card.append(el("div", { class: "delta-now", text: fmtNum(day.posts) }));
-    card.append(el("div", { class: "delta-chg " + (day.posts ? "up" : "flat") },
-      el("b", { text: t("stats.today.out") })));
-    box.append(card);
-  }
+  const card = el("div", { class: "delta-card" });
+  card.style.setProperty("--dc", "#ffb020");
+  card.append(el("div", { class: "delta-top" },
+    el("span", { class: "delta-ic", text: "🚀" }),
+    el("span", { class: "delta-lab", text: t("stats.posts") })));
+  card.append(el("div", { class: "delta-now", text: fmtNum(P.posts || 0) }));
+  card.append(el("div", { class: "delta-chg " + ((P.posts || 0) ? "up" : "flat") },
+    el("b", { text: suffix })));
+  box.append(card);
 }
 function statTile({ label, value, unit, sub, accent, dec }) {
   const num = el("span", { class: "m-num", text: "0" });
@@ -1770,7 +1788,7 @@ async function loadStats() {
   if (d.day) {
     g.append(goalCard({ title: t("goal.drop"), cur: d.day.views, target: d.day.target_views || 1, unit: t("unit.views"), sub: `💬 ${d.day.comments}/${d.day.target_comments} · ❤ ${d.day.likes} · ${d.day.posts} ${t("stats.posts")}`, c1: "#22d3c5", c2: "#3b82f6" }));
   }
-  renderDeltas(d.deltas, d.day);
+  renderDeltas(d.deltas);
   // overall
   const o = $("#stats-overall"); o.innerHTML = "";
   o.append(
