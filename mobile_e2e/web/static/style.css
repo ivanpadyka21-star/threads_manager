@@ -517,6 +517,10 @@ label.auto input { width: auto; margin: 0; }
 .da-btn:hover:not(:disabled) { filter: brightness(1.08); }
 .da-btn:disabled { opacity: .6; cursor: default; }
 .da-brief { margin-top: 16px; }
+.da-reminder { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--muted); margin-bottom: 12px; flex-wrap: wrap; }
+.da-reminder b { color: var(--ink); font-family: "JetBrains Mono", monospace; font-weight: 700; }
+.da-reminder b.warn { color: var(--amber); }
+.da-rem-i { margin-right: 4px; }
 .da-brief:empty { display: none; }
 .da-empty { font-size: 13px; color: var(--muted); }
 .da-when { font: 11px "JetBrains Mono", monospace; color: #34d399; margin-bottom: 12px; }

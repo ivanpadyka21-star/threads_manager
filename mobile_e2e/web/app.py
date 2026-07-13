@@ -422,21 +422,40 @@ def create_app(
         return jsonify(get_strategy_settings(db))
 
     # -- once-a-day full analysis (A-to-Z: analysis + strategy + drop) -------
+    def _daily_running():
+        # DB-based so a stuck/killed run can't leave it "running" forever: a run
+        # older than 8 min is treated as dead.
+        age = db.setting_age_seconds("daily_running_at")
+        return age is not None and age < 480
+
+    def _post_reminder():
+        """Today's post status — so the owner is always reminded where posts are."""
+        import datetime as _dt
+        from mobile_e2e.web.store import _TZ
+        today = _dt.datetime.now(_TZ).date().isoformat()
+        posts = [t for t in db.published_tasks(limit=400)
+                 if (t.get("updated_at") or "").startswith(today)]
+        sched = [t for t in db.list_tasks(status="scheduled") if t.get("kind") == "post"]
+        pending = [t for t in db.list_tasks(status="pending") if t.get("kind") == "post"]
+        return {"published_today": len(posts), "scheduled": len(sched),
+                "pending_approval": len(pending)}
+
     @app.get("/api/daily-analysis")
     def daily_analysis_get():
         raw = db.get_setting("daily_brief", "")
         brief = json.loads(raw) if raw else None
         return jsonify({"brief": brief,
                         "age": db.setting_age_seconds("daily_brief_at"),
-                        "running": bool(getattr(app, "_daily_running", False))})
+                        "running": _daily_running(),
+                        "posts": _post_reminder()})
 
     @app.post("/api/daily-analysis")
     def daily_analysis_run():
-        if getattr(app, "_daily_running", False):
+        if _daily_running():
             return jsonify({"error": "already running"}), 409
         data = request.get_json(silent=True) or {}
         count = int(data.get("count") or 10)
-        app._daily_running = True
+        db.mark_heartbeat("daily_running_at")  # claim the run immediately
 
         def _work():
             try:
@@ -444,8 +463,7 @@ def create_app(
                 _st.run_daily_analysis(db, count=count)
             except Exception as exc:  # noqa: BLE001
                 db.record_event("daily.error", str(exc)[:200], None, level="error")
-            finally:
-                app._daily_running = False
+                db.set_setting("daily_running_at", "")  # release the guard on failure
 
         threading.Thread(target=_work, daemon=True).start()
         return jsonify({"started": True}), 202

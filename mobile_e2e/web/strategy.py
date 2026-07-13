@@ -409,21 +409,26 @@ EVOLVE_SYSTEM = (
 
 
 DAILY_ANALYSIS_SYSTEM = (
-    "You are the HEAD content strategist running the ONCE-A-DAY full analysis for "
+    "You are the HEAD content strategist running the ONCE-A-DAY deep analysis for "
     "an SMM creator (adult, private opted-in 18+, her own real identity). This is "
-    "the ONLY deep pass today — make it count, high quality, coherent, one voice. "
+    "the ONLY strategic pass today — make it DEEP and coherent, one voice. "
     "OUR VECTOR: make a man WANT HER as a woman → visit profile → LIKE, FOLLOW, "
     "click the bio link. Priorities: followers > likes > clicks > views > "
-    "comments. Given the data (our results by priority, top posts by LIKES, flops, "
-    "competitor intel, goal progress, past verdicts), do a full A-to-Z: an honest "
-    "analysis (what worked/failed by likes+follows and WHY — say 'вот тут проеб'), "
-    "the day's strategy (sharp angle), and the day's POSTS. Posts DNA: light "
-    "lewdness + a note of lack/longing/desire + her personality; first person; "
-    "≤1 emoji; NEVER debate questions to men; simple, unashamed, not crude "
-    "pornographic. Aim EACH post to be a legend candidate (likes + follows). "
-    "Return STRICT JSON only: {\"analysis\": \"5-8 sentences RU\", \"strategy\": "
-    "\"2-3 sentences RU\", \"posts\": [{\"account\": \"handle or ''\", \"text\": "
-    "\"the post in Ukrainian\"}] }. No prose outside JSON."
+    "comments. Given the data (top posts by LIKES, flops, PER-ACCOUNT reach, "
+    "PHOTO-vs-TEXT conversion, competitor intel, goal progress), write a THOROUGH "
+    "analysis — NOT 2 sentences. Cover, honestly ('вот тут проеб'): (1) which "
+    "posts pulled DESIRE (likes) and the exact hook; (2) which ACCOUNT actually "
+    "has reach and which are dead (don't feed dead accounts the best ideas); "
+    "(3) PHOTO vs TEXT — which converts views→likes better; (4) the 3-layer "
+    "corridor that works: sexual → loneliness/lack of a man's hands → personality "
+    "(bold, cute, a little under-loved). Then the day's STRATEGY (sharp), then the "
+    "day's POSTS. Posts DNA: light lewdness + note of lack/longing + her "
+    "personality; first person; ≤1 emoji; NEVER debate questions to men; a post "
+    "reads like a caption to a sexy photo (invite to a fantasy, not porn). Aim "
+    "EACH post to be a legend candidate. Return STRICT JSON only: {\"analysis\": "
+    "\"8-12 sentences RU, concrete, cite real numbers\", \"strategy\": \"3-4 "
+    "sentences RU\", \"posts\": [{\"account\": \"handle or ''\", \"text\": \"the "
+    "post in Ukrainian\"}] }. No prose outside JSON."
 )
 
 
@@ -432,8 +437,13 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
     the day's posts → a scheduled drop. Replaces the scattered auto-triggers so
     the strategist runs deliberately once (cheap + coherent)."""
     import json as _json
+    from collections import defaultdict
     from datetime import datetime, timedelta
     from mobile_e2e.web.store import _TZ
+
+    # Single-run guard (DB-based so it survives restarts): mark start; the API
+    # treats a run < 8 min old as "in progress" and blocks a second one.
+    store.mark_heartbeat("daily_running_at")
 
     try:
         refresh_metrics(store, limit=200)
@@ -448,6 +458,27 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
     kpi = store.account_kpi().get("goals", {})
     verdicts = [d.get("verdict") for d in store.list_drops() if d.get("verdict")][:3]
     rules = store.get_setting(S_RULES, DEFAULTS[S_RULES])
+
+    # per-account reach + photo-vs-text conversion (operational layer)
+    hands = {a["id"]: (a.get("handle") or "") for a in store.list_accounts()}
+    acc_perf = defaultdict(lambda: {"likes": 0, "views": 0, "posts": 0})
+    fmt = {"photo": {"likes": 0, "views": 0, "posts": 0},
+           "text": {"likes": 0, "views": 0, "posts": 0}}
+    for p in store.published_tasks(limit=200):
+        h = hands.get(p.get("account_id"), "?")
+        lk, vw = p.get("likes") or 0, p.get("views") or 0
+        acc_perf[h]["likes"] += lk; acc_perf[h]["views"] += vw; acc_perf[h]["posts"] += 1
+        k = "photo" if p.get("photo") else "text"
+        fmt[k]["likes"] += lk; fmt[k]["views"] += vw; fmt[k]["posts"] += 1
+
+    def _rate(d):
+        return round(d["likes"] * 100 / d["views"], 1) if d["views"] else 0.0
+    acc_lines = [f"  {h}: {d['likes']}❤ / {d['views']}👁 ({_rate(d)}% like-rate) over {d['posts']} posts"
+                 for h, d in sorted(acc_perf.items(), key=lambda kv: kv[1]["likes"], reverse=True) if h]
+    fmt_line = (f"  PHOTO: {fmt['photo']['likes']}❤ / {fmt['photo']['views']}👁 "
+                f"({_rate(fmt['photo'])}% like-rate)\n"
+                f"  TEXT:  {fmt['text']['likes']}❤ / {fmt['text']['views']}👁 "
+                f"({_rate(fmt['text'])}% like-rate)")
 
     def _p(p):
         return (f"{p.get('likes',0)}❤ {p.get('views',0)}👁 {p.get('replies',0)}💬: "
@@ -466,6 +497,9 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
         *[f"  {_p(p)}" for p in top],
         ("=== FLOPS (views but ~no likes — the wrong vector) ===\n"
          + "\n".join(f"  {_p(p)}" for p in flops)) if flops else "",
+        "=== PER-ACCOUNT REACH (which account pulls, which is dead) ===\n"
+        + "\n".join(acc_lines),
+        "=== PHOTO vs TEXT (what converts views→likes) ===\n" + fmt_line,
         f"=== COMPETITOR INTEL ===\n{feed[:900]}" if feed else "",
         ("=== RECENT DROP VERDICTS ===\n" + "\n".join(f"  - {v}" for v in verdicts)) if verdicts else "",
         f"TASK: full daily analysis + strategy + {count} posts for today. STRICT JSON only.",
@@ -500,17 +534,21 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
         store.update_task(tid, scheduled_for=(start + step * i).isoformat(timespec="minutes"))
         store.set_task_status(tid, "scheduled")
 
-    did = None
+    did, label = None, ""
     if task_ids:
         label = f"Анализ дня {now:%d.%m}"
         drop = store.add_drop(label=label, goal_views=count * 400,
                               goal_comments=count * 8, task_ids=task_ids)
         did = drop["id"] if isinstance(drop, dict) else drop
 
+    # The brief is ALWAYS linked to the exact drop it produced (drop_id + label),
+    # so the dashboard never shows an analysis that doesn't match its drop.
     brief = {"analysis": analysis, "strategy": strat, "drop_id": did,
-             "posts": len(task_ids), "at": now.isoformat(timespec="minutes")}
+             "drop_label": label, "posts": len(task_ids),
+             "at": now.isoformat(timespec="minutes"), "author": "strategist"}
     store.set_setting("daily_brief", _json.dumps(brief, ensure_ascii=False))
     store.mark_heartbeat("daily_brief_at")
+    store.set_setting("daily_running_at", "")  # clear the run guard
     store.log("daily.analysis", f"drop #{did}, {len(task_ids)} posts", None)
     return brief
 

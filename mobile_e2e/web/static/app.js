@@ -192,16 +192,26 @@ async function loadDailyBrief() {
     btn.disabled = !!d.running;
     btn.textContent = d.running ? t("da.running") : t("da.run");
   }
-  if (!d.brief) { box.innerHTML = `<div class="da-empty">${t("da.empty")}</div>`; return; }
-  const b = d.brief;
   box.innerHTML = "";
-  box.append(el("div", { class: "da-when", text: t("da.done").replace("{ago}", d.age == null ? "" : fmtAgo(d.age)) }));
+  // Post reminder — always visible so posts never get lost.
+  const ps = d.posts || {};
+  box.append(el("div", { class: "da-reminder" },
+    el("span", { class: "da-rem-i", text: "📮" }),
+    el("b", { text: ps.published_today || 0 }), el("span", { text: t("da.rem.out") }),
+    el("b", { text: ps.scheduled || 0 }), el("span", { text: t("da.rem.queue") }),
+    el("b", { class: (ps.pending_approval ? "warn" : ""), text: ps.pending_approval || 0 }),
+    el("span", { text: t("da.rem.pending") })));
+  if (!d.brief) { box.append(el("div", { class: "da-empty", text: t("da.empty") })); return; }
+  const b = d.brief;
+  box.append(el("div", { class: "da-when",
+    text: t("da.done").replace("{ago}", d.age == null ? "" : fmtAgo(d.age))
+      + (b.drop_label ? ` · ${b.drop_label} → #${b.drop_id}` : "") }));
   if (b.analysis) box.append(el("div", { class: "da-block" },
     el("div", { class: "da-lbl", text: t("da.analysis") }), el("p", { text: b.analysis })));
   if (b.strategy) box.append(el("div", { class: "da-block" },
     el("div", { class: "da-lbl", text: t("da.strategy") }), el("p", { text: b.strategy })));
   if (b.drop_id) box.append(el("div", { class: "da-drop" },
-    el("span", { text: t("da.drop").replace("{n}", b.posts) }),
+    el("span", { text: (b.drop_label || t("da.drop").replace("{n}", b.posts)) + ` — ${b.posts} ${t("stats.posts")}` }),
     el("button", { class: "mini", text: t("da.open"), onclick: () => showTab("drops") })));
 }
 const daRun = $("#da-run");
