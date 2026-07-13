@@ -16,7 +16,7 @@ import requests
 LITTERBOX = "https://litterbox.catbox.moe/resources/internals/api.php"
 
 
-def stage(path: str, expiry: str = "1h") -> str:
+def stage(path: str, expiry: str = "72h") -> str:
     """Upload a local image, return a public URL that expires after ``expiry``.
 
     ``expiry`` is one of "1h", "12h", "24h", "72h". Raises on failure.

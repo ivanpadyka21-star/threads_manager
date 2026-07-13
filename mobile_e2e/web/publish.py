@@ -8,6 +8,7 @@ flows into the analytics/effectiveness metrics.
 from __future__ import annotations
 
 import os
+import time
 
 from mobile_e2e.web import threads_client
 
@@ -76,11 +77,23 @@ def publish_task(db, task_id: int) -> str:
     try:
         if photo:
             # Photo post: stage the local file at a public URL, then publish an
-            # image post. The staged copy auto-expires (litterbox) after Threads
-            # has downloaded it.
+            # image post. Threads' fetch of the staged URL is occasionally flaky,
+            # so retry with a FRESH upload a couple of times before giving up.
             from mobile_e2e.web import image_host
-            image_url = image_host.stage(os.path.join(PHOTOS_DIR, photo))
-            published_id = threads_client.publish_image(image_url, text, creds)
+            published_id, last_exc = None, None
+            for attempt in range(3):
+                try:
+                    image_url = image_host.stage(os.path.join(PHOTOS_DIR, photo))
+                    published_id = threads_client.publish_image(image_url, text, creds)
+                    break
+                except threads_client.ThreadsNotConfigured:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - transient media fetch, retry
+                    last_exc = exc
+                    if attempt < 2:
+                        time.sleep(5)
+            if published_id is None:
+                raise last_exc or RuntimeError("photo publish failed")
         else:
             published_id = threads_client.publish_text(text, creds)
     except threads_client.ThreadsNotConfigured:
