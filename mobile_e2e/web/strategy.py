@@ -409,26 +409,42 @@ EVOLVE_SYSTEM = (
 
 
 DAILY_ANALYSIS_SYSTEM = (
-    "You are the HEAD content strategist running the ONCE-A-DAY deep analysis for "
-    "an SMM creator (adult, private opted-in 18+, her own real identity). This is "
-    "the ONLY strategic pass today — make it DEEP and coherent, one voice. "
-    "OUR VECTOR: make a man WANT HER as a woman → visit profile → LIKE, FOLLOW, "
-    "click the bio link. Priorities: followers > likes > clicks > views > "
-    "comments. Given the data (top posts by LIKES, flops, PER-ACCOUNT reach, "
-    "PHOTO-vs-TEXT conversion, competitor intel, goal progress), write a THOROUGH "
-    "analysis — NOT 2 sentences. Cover, honestly ('вот тут проеб'): (1) which "
-    "posts pulled DESIRE (likes) and the exact hook; (2) which ACCOUNT actually "
-    "has reach and which are dead (don't feed dead accounts the best ideas); "
-    "(3) PHOTO vs TEXT — which converts views→likes better; (4) the 3-layer "
-    "corridor that works: sexual → loneliness/lack of a man's hands → personality "
-    "(bold, cute, a little under-loved). Then the day's STRATEGY (sharp), then the "
-    "day's POSTS. Posts DNA: light lewdness + note of lack/longing + her "
-    "personality; first person; ≤1 emoji; NEVER debate questions to men; a post "
-    "reads like a caption to a sexy photo (invite to a fantasy, not porn). Aim "
-    "EACH post to be a legend candidate. Return STRICT JSON only: {\"analysis\": "
-    "\"8-12 sentences RU, concrete, cite real numbers\", \"strategy\": \"3-4 "
-    "sentences RU\", \"posts\": [{\"account\": \"handle or ''\", \"text\": \"the "
-    "post in Ukrainian\"}] }. No prose outside JSON."
+    "You are the HEAD content strategist AND a second pair of eyes working as a "
+    "PAIR with Claude — improve each other, catch what the owner would never "
+    "notice, push each other to be sharper. This is the ONCE-A-DAY deep pass for "
+    "an SMM creator (adult, private opted-in 18+, her own real identity). "
+    "OUR VECTOR: make a man WANT HER as a woman → profile → LIKE, FOLLOW, click "
+    "the bio link. Priorities: followers > likes > clicks > views > comments.\n"
+    "LOOK THE NUMBERS IN THE EYE — HONESTLY, every single day. How to read them:\n"
+    "• If today has NO numbers, say it plainly ('сегодня цифр нет, день провальный') "
+    "— a flat day means nobody carries tomorrow unless we get BETTER right now. Name "
+    "the day: провал / средне / есть рост.\n"
+    "• Beware the LEGEND-CARRY: if ONE legendary post inflates the totals, judge the "
+    "REST of the posts separately — the median post may be dying while the average lies.\n"
+    "• Read trajectory & mismatch SIGNALS: a post that only STARTED climbing now "
+    "(watch it, maybe boost it); clicks coming but no views (or views but no "
+    "likes/clicks — wrong vector); a dead account; photo vs text conversion.\n"
+    "• Propose NEW testable HYPOTHESES the owner can approve so we test them — you "
+    "are allowed to push your own bets.\n"
+    "• Set a HARD goal for TOMORROW. Nietzsche: 'ставьте цели, которых сложно "
+    "достичь — тогда начинаете расти.' A stretch ABOVE today, never below.\n"
+    "Write a THOROUGH analysis (NOT 2 sentences — cite real numbers), the day's "
+    "sharp STRATEGY, and the day's POSTS. Posts DNA: light lewdness + note of "
+    "lack/longing for a man's hands + her personality (bold, cute, a little "
+    "under-loved); first person; ≤1 emoji; NEVER debate questions to men; reads "
+    "like a caption to a sexy photo (fantasy, not porn); each post a legend "
+    "candidate. Return STRICT JSON only: {"
+    "\"verdict\": \"1-2 RU sentences: есть цифры или нет и почему; назови день\", "
+    "\"analysis\": \"8-12 RU sentences, concrete, cite real numbers, separate the "
+    "legend from the rest\", "
+    "\"signals\": [\"short RU number-signals you noticed (клики без просмотров, "
+    "пост только начал расти, мёртвый аккаунт, ...)\"], "
+    "\"hypotheses\": [\"short RU testable idea to propose to the owner\"], "
+    "\"strategy\": \"3-4 RU sentences\", "
+    "\"tomorrow_goal\": {\"followers\": int, \"likes\": int, \"clicks\": int, "
+    "\"views\": int}, "
+    "\"posts\": [{\"account\": \"handle or ''\", \"text\": \"post in Ukrainian\"}]}. "
+    "No prose outside JSON."
 )
 
 
@@ -455,9 +471,35 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
              if (p.get("views") or 0) > 0 and (p.get("likes") or 0) <= 2][:5]
     feed = store.feed_insights().get("text", "")
     dg = store.daily_goal()
-    kpi = store.account_kpi().get("goals", {})
+    kpi_full = store.account_kpi()
+    kpi = kpi_full.get("goals", {})
+    per_acc = kpi_full.get("per_account", [])
+    deltas = store.daily_deltas().get("metrics", {})
     verdicts = [d.get("verdict") for d in store.list_drops() if d.get("verdict")][:3]
     rules = store.get_setting(S_RULES, DEFAULTS[S_RULES])
+
+    # Recent posts (last ~12h) — are they climbing or dead on arrival?
+    _now_dt = datetime.now(_TZ).replace(tzinfo=None)
+    climbers = []
+    for p in store.published_tasks(limit=60):
+        try:
+            up = datetime.fromisoformat((p.get("updated_at") or "")[:19])
+        except ValueError:
+            continue
+        if (_now_dt - up).total_seconds() <= 12 * 3600:
+            climbers.append(p)
+    climbers = climbers[:8]
+
+    # Per-account clicks-vs-views mismatch signals (clicks w/o views, views w/o clicks)
+    sig_lines = []
+    for a in per_acc:
+        v, c, f = a.get("profile_views", 0), a.get("clicks", 0), a.get("followers", 0)
+        sig_lines.append(f"  {a.get('account','?')}: {f}👥 · {v}👁 профиль · {c}🔗 клики · "
+                         f"+{a.get('followers_delta_day',0)} подписч/день")
+
+    def _dl(m):
+        x = deltas.get(m, {})
+        return f"{x.get('prev',0)}→{x.get('cur',0)} ({x.get('delta',0):+d})"
 
     # per-account reach + photo-vs-text conversion (operational layer)
     hands = {a["id"]: (a.get("handle") or "") for a in store.list_accounts()}
@@ -493,25 +535,50 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
         f"TODAY'S GOAL: подписки {dg['followers']['cur']}/{dg['followers']['target']}, "
         f"лайки {dg['likes']['cur']}/{dg['likes']['target']}, клики {dg['clicks']['cur']}/{dg['clicks']['target']}",
         f"30-DAY: подписки {_g('followers')}, лайки {_g('likes')}, клики {_g('clicks')}",
-        "=== TOP POSTS BY LIKES (what pulls desire) ===",
+        "=== TODAY'S DELTAS (было→стало за сегодня — look them in the eye) ===\n"
+        f"  подписчики: {_dl('followers')}\n  лайки: {_dl('likes')}\n"
+        f"  клики: {_dl('clicks')}\n  просмотры профилей: {_dl('profile_views')}",
+        "=== TOP POSTS BY LIKES (what pulls desire; the 1st may be a legend that carries stats) ===",
         *[f"  {_p(p)}" for p in top],
         ("=== FLOPS (views but ~no likes — the wrong vector) ===\n"
          + "\n".join(f"  {_p(p)}" for p in flops)) if flops else "",
+        ("=== RECENT POSTS last ~12h (climbing or dead on arrival?) ===\n"
+         + "\n".join(f"  {_p(p)}" for p in climbers)) if climbers else "",
+        "=== PER-ACCOUNT SIGNALS (clicks vs views vs followers — spot mismatches) ===\n"
+        + "\n".join(sig_lines),
         "=== PER-ACCOUNT REACH (which account pulls, which is dead) ===\n"
         + "\n".join(acc_lines),
         "=== PHOTO vs TEXT (what converts views→likes) ===\n" + fmt_line,
         f"=== COMPETITOR INTEL ===\n{feed[:900]}" if feed else "",
         ("=== RECENT DROP VERDICTS ===\n" + "\n".join(f"  - {v}" for v in verdicts)) if verdicts else "",
-        f"TASK: full daily analysis + strategy + {count} posts for today. STRICT JSON only.",
+        f"TASK: honest daily analysis (verdict+signals+hypotheses) + strategy + "
+        f"tomorrow's HARD goal + {count} posts for today. STRICT JSON only.",
     ] if x])
 
     factory = agent_factory or (lambda sp: make_agent(sp, role="strategist"))
     raw = factory(DAILY_ANALYSIS_SYSTEM).generate_response(context)
     data = _extract_json(raw)
+    verdict = str(data.get("verdict", "")).strip()
     analysis = str(data.get("analysis", "")).strip()
     strat = str(data.get("strategy", "")).strip()
+    signals = [str(s).strip() for s in (data.get("signals") or []) if str(s).strip()][:6]
+    hypotheses = [str(h).strip() for h in (data.get("hypotheses") or []) if str(h).strip()][:5]
     posts = [p for p in (data.get("posts") or [])
              if isinstance(p, dict) and str(p.get("text", "")).strip()][:count]
+
+    # Nietzsche: set TOMORROW's hard goal (a stretch above today, never below the
+    # current floor). These feed store.daily_goal() targets, so the day-goal bars
+    # auto-tighten as we grow.
+    tg = data.get("tomorrow_goal") or {}
+    floors = {"followers": 30, "likes": 50, "clicks": 25, "views": 4000}
+    for key, floor in floors.items():
+        try:
+            want = int(tg.get(key) or 0)
+        except (TypeError, ValueError):
+            want = 0
+        target = max(want, floor)
+        setting = "goal_day_views" if key == "views" else f"goal_day_{key}"
+        store.set_setting(setting, str(target))
 
     hmap = {(a.get("handle") or "").lstrip("@").lower(): a["id"]
             for a in store.list_accounts() if a.get("handle")}
@@ -543,8 +610,9 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
 
     # The brief is ALWAYS linked to the exact drop it produced (drop_id + label),
     # so the dashboard never shows an analysis that doesn't match its drop.
-    brief = {"analysis": analysis, "strategy": strat, "drop_id": did,
-             "drop_label": label, "posts": len(task_ids),
+    brief = {"verdict": verdict, "analysis": analysis, "strategy": strat,
+             "signals": signals, "hypotheses": hypotheses,
+             "drop_id": did, "drop_label": label, "posts": len(task_ids),
              "at": now.isoformat(timespec="minutes"), "author": "strategist"}
     store.set_setting("daily_brief", _json.dumps(brief, ensure_ascii=False))
     store.mark_heartbeat("daily_brief_at")

@@ -21,8 +21,6 @@
         <button class="nav-item active" data-tab="dashboard"><span>▚</span> <em data-i18n="nav.dashboard">Дашборд</em></button>
         <button class="nav-item" data-tab="kpi"><span>📈</span> <em data-i18n="nav.kpi">KPI Рост</em></button>
         <button class="nav-item" data-tab="accounts"><span>◉</span> <em data-i18n="nav.accounts">Аккаунты</em></button>
-        <button class="nav-item" data-tab="tasks"><span>☑</span> <em data-i18n="nav.tasks">Задачи</em></button>
-        <button class="nav-item" data-tab="studio"><span>✦</span> <em data-i18n="nav.studio">Студия</em></button>
         <button class="nav-item" data-tab="warmup"><span>🔥</span> <em data-i18n="nav.warmup">Прогрев</em></button>
         <button class="nav-item" data-tab="followups"><span>💬</span> <em data-i18n="nav.followups">Автоответы</em></button>
         <button class="nav-item" data-tab="photos"><span>📸</span> <em data-i18n="nav.photos">Фото</em></button>
@@ -124,169 +122,6 @@
         <div class="panel">
           <div class="panel-head"><h2 data-i18n="nav.accounts">Аккаунты</h2></div>
           <div id="accounts-table" class="table-wrap"></div>
-        </div>
-      </section>
-
-      <!-- Tasks -->
-      <section class="tab" id="tab-tasks">
-        <div class="panel">
-          <div class="panel-head"><h2 data-i18n="task.new">Новая задача</h2></div>
-          <form id="task-form" class="form-grid">
-            <label><span data-i18n="task.account">Аккаунт</span>
-              <select name="account_id" id="task-account"></select>
-            </label>
-            <label><span data-i18n="task.type">Тип</span>
-              <select name="kind">
-                <option value="post" data-i18n="task.kind.post">Пост</option>
-                <option value="comment" data-i18n="task.kind.comment">Комментарий</option>
-                <option value="reply" data-i18n="task.kind.reply">Ответ</option>
-                <option value="ai_generate" data-i18n="task.kind.ai">Черновик ИИ</option>
-                <option value="custom" data-i18n="task.kind.custom">Другое</option>
-              </select>
-            </label>
-            <label><span data-i18n="task.title">Название</span> <input name="title" data-i18n-ph="task.title.ph" placeholder="краткая метка"></label>
-            <label><span data-i18n="task.language">Язык</span>
-              <select name="language">
-                <option value="">—</option>
-                <option value="Ukrainian">Українська</option>
-                <option value="Russian">Русский</option>
-                <option value="English">English</option>
-                <option value="Polish">Polski</option>
-                <option value="German">Deutsch</option>
-              </select>
-            </label>
-            <label><span data-i18n="task.style">Характер / стиль</span> <input name="style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно, с юмором"></label>
-            <label><span data-i18n="task.length">Длина</span>
-              <select name="max_chars">
-                <option value="" data-i18n="len.auto">Авто</option>
-                <option value="150" data-i18n="len.short">Короткий (~150)</option>
-                <option value="300" data-i18n="len.medium">Средний (~300)</option>
-                <option value="480" data-i18n="len.long">Длинный (~480)</option>
-              </select>
-            </label>
-            <label class="wide"><span data-i18n="task.target">Цель (ссылка/описание поста)</span> <input name="target" data-i18n-ph="task.target.ph" placeholder="ссылка или описание поста, к которому комментарий"></label>
-            <label><span data-i18n="task.deadline">Дедлайн</span> <input name="deadline" type="datetime-local"></label>
-            <label><span data-i18n="task.reminder">🔔 Напоминание</span> <input name="reminder" type="datetime-local"></label>
-            <label class="wide"><span data-i18n="task.content">Контент / инструкция ИИ</span>
-              <textarea name="payload" rows="3" data-i18n-ph="task.content.ph" placeholder="Текст поста, или инструкция ИИ: что написать / о чём комментарий"></textarea>
-            </label>
-            <div class="form-actions">
-              <button type="submit" data-i18n="task.queue">Поставить в очередь</button>
-              <span class="hint" data-i18n="task.hint">Задачи создаются как «ожидает» — ничего не выполнится без вашего одобрения.</span>
-            </div>
-          </form>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><h2 data-i18n="batch.title">Пакет постов (до 10)</h2><span id="ai-quota" class="ai-quota"></span></div>
-          <form id="batch-form" class="form-grid">
-            <label><span data-i18n="task.account">Аккаунт</span>
-              <select name="account_id" id="batch-account"></select>
-            </label>
-            <label><span data-i18n="batch.interval">Интервал (мин)</span> <input name="interval_minutes" type="number" min="1" value="60"></label>
-            <label><span data-i18n="batch.start">Старт</span> <input name="start_at" type="datetime-local"></label>
-            <label><span data-i18n="task.language">Язык</span>
-              <select name="language">
-                <option value="">—</option>
-                <option value="Ukrainian">Українська</option>
-                <option value="Russian">Русский</option>
-                <option value="English">English</option>
-                <option value="Polish">Polski</option>
-                <option value="German">Deutsch</option>
-              </select>
-            </label>
-            <label><span data-i18n="task.style">Характер / стиль</span> <input name="style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно"></label>
-            <label><span data-i18n="task.length">Длина</span>
-              <select name="max_chars">
-                <option value="" data-i18n="len.auto">Авто</option>
-                <option value="150" data-i18n="len.short">Короткий (~150)</option>
-                <option value="300" data-i18n="len.medium">Средний (~300)</option>
-                <option value="480" data-i18n="len.long">Длинный (~480)</option>
-              </select>
-            </label>
-            <label class="wide"><span data-i18n="batch.briefs">Темы постов — по одной в строке (до 10)</span>
-              <textarea name="briefs" rows="5" data-i18n-ph="batch.briefs.ph" placeholder="Пост про любовь&#10;Совет по продуктивности&#10;Мотивация на утро"></textarea>
-            </label>
-            <div class="form-actions">
-              <button type="submit" data-i18n="batch.create">Сгенерировать черновики</button>
-              <span class="hint" data-i18n="batch.hint">ИИ создаст черновики. Посмотрите и подтвердите пакет — публикация по расписанию.</span>
-            </div>
-          </form>
-          <div id="batch-preview"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head">
-            <h2 data-i18n="task.queue.title">Очередь задач</h2>
-            <select id="task-filter-status">
-              <option value="" data-i18n="filter.all">Все статусы</option>
-              <option value="pending" data-i18n="status.pending">Ожидает</option>
-              <option value="approved" data-i18n="status.approved">Одобрено</option>
-              <option value="scheduled" data-i18n="status.scheduled">Запланировано</option>
-              <option value="done" data-i18n="status.done">Выполнено</option>
-              <option value="rejected" data-i18n="status.rejected">Отклонено</option>
-            </select>
-          </div>
-          <div id="tasks-table" class="table-wrap"></div>
-        </div>
-      </section>
-
-      <!-- Studio -->
-      <section class="tab" id="tab-studio">
-        <div class="studio">
-          <div class="studio-left">
-            <div class="panel">
-              <div class="panel-head"><h2 data-i18n="studio.plan">Планирование</h2><span id="studio-quota" class="ai-quota"></span></div>
-              <label><span data-i18n="task.account">Аккаунт</span><select id="studio-account"></select></label>
-              <div class="two">
-                <label><span data-i18n="task.language">Язык</span>
-                  <select id="studio-lang">
-                    <option value="">—</option><option value="Ukrainian">Українська</option>
-                    <option value="Russian">Русский</option><option value="English">English</option>
-                    <option value="Polish">Polski</option><option value="German">Deutsch</option>
-                  </select>
-                </label>
-                <label><span data-i18n="task.length">Длина</span>
-                  <select id="studio-length">
-                    <option value="" data-i18n="len.auto">Авто</option>
-                    <option value="150" data-i18n="len.short">Короткий (~150)</option>
-                    <option value="300" data-i18n="len.medium">Средний (~300)</option>
-                    <option value="480" data-i18n="len.long">Длинный (~480)</option>
-                  </select>
-                </label>
-              </div>
-              <div class="two">
-                <label><span data-i18n="batch.interval">Интервал (мин)</span><input id="studio-interval" type="number" min="1" value="90"></label>
-                <label><span data-i18n="batch.start">Старт</span><input id="studio-start" type="datetime-local"></label>
-              </div>
-              <label><span data-i18n="studio.style">Характер / стиль</span><input id="studio-style" data-i18n-ph="task.style.ph" placeholder="напр. дружелюбно"></label>
-              <label><span data-i18n="studio.prompt">Промт для ИИ</span>
-                <textarea id="studio-prompt" rows="4" data-i18n-ph="studio.prompt.ph" placeholder="напр. 7 постов про продуктивность, дружелюбно, по одному совету"></textarea>
-              </label>
-              <div class="form-actions">
-                <button id="studio-plan" data-i18n="studio.do">Спланировать (ИИ)</button>
-                <button id="studio-save-prompt" class="ghost" data-i18n="studio.save">Сохранить промт</button>
-              </div>
-            </div>
-            <div class="panel">
-              <div class="panel-head"><h2 data-i18n="agent.title">Автопилот (агент)</h2></div>
-              <div class="hint" data-i18n="agent.hint" style="margin-bottom:8px">Агент сам ставит задачи под ваш промт — создаёт черновики на одобрение, не публикует.</div>
-              <textarea id="agent-instruction" rows="3" data-i18n-ph="agent.ph" placeholder="напр. сделай 3 полезных поста про тайм-менеджмент и разложи на завтра"></textarea>
-              <div class="form-actions"><button id="agent-run" data-i18n="agent.run">Запустить агента</button></div>
-              <div id="agent-output"></div>
-            </div>
-            <div class="panel">
-              <div class="panel-head">
-                <h2 data-i18n="studio.saved">Сохранённые промты</h2>
-                <button id="seed-viral" class="mini ghost" data-i18n="studio.seed_viral" title="Добавить проверенные виральные форматы">🔥 Залётные форматы</button>
-              </div>
-              <div id="studio-prompts"></div>
-            </div>
-          </div>
-          <div class="studio-right">
-            <div class="panel">
-              <div class="panel-head"><h2 data-i18n="studio.posts">Посты</h2><button id="studio-add" class="mini ghost" data-i18n="studio.add">+ пост</button></div>
-              <div id="studio-cards"></div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -476,6 +311,9 @@
       <section class="tab" id="tab-stats">
         <p class="eyebrow-lbl" data-i18n="stats.goals">🎯 Цели, к которым идём</p>
         <div id="stats-goals" class="stats-goals"></div>
+
+        <p class="eyebrow-lbl" data-i18n="stats.today">📈 Изменения за сегодня</p>
+        <div id="stats-deltas" class="stats-deltas"></div>
 
         <p class="eyebrow-lbl" data-i18n="stats.overall">📊 Общие показатели (30 дней)</p>
         <div id="stats-overall" class="metrics"></div>

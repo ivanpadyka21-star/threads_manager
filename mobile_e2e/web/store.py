@@ -358,6 +358,36 @@ class Store:
             "clicks": _m("clicks", clicks_today, 25),
         }
 
+    def daily_deltas(self) -> dict:
+        """Day-over-day change across the whole portfolio for each priority
+        metric — the honest "было X → +Δ → стало Y" numbers. Computed per
+        account (last two snapshots) then summed, so a partial refresh (only
+        some accounts captured today) can't fake a drop."""
+        from collections import defaultdict
+        metrics = ("followers", "profile_views", "likes", "clicks", "replies")
+        with self._lock:
+            snaps = [dict(r) for r in self._conn.execute(
+                "SELECT account_id, date, followers, profile_views, likes, clicks, replies "
+                "FROM account_insights ORDER BY date"
+            ).fetchall()]
+        by_acc = defaultdict(list)
+        for s in snaps:
+            by_acc[s["account_id"]].append(s)
+        cur_tot = {m: 0 for m in metrics}
+        delta_tot = {m: 0 for m in metrics}
+        for rows in by_acc.values():
+            last = rows[-1]
+            prev = rows[-2] if len(rows) >= 2 else None
+            for m in metrics:
+                cur_tot[m] += int(last.get(m) or 0)
+                if prev is not None:
+                    delta_tot[m] += int(last.get(m) or 0) - int(prev.get(m) or 0)
+        return {
+            "date": snaps[-1]["date"] if snaps else None,
+            "metrics": {m: {"cur": cur_tot[m], "delta": delta_tot[m],
+                            "prev": cur_tot[m] - delta_tot[m]} for m in metrics},
+        }
+
     def _ensure_column(self, table: str, column: str, decl: str) -> None:
         with self._lock, self._conn:
             cols = {
@@ -1667,13 +1697,14 @@ class Store:
                 "text": _clean(t.get("result") or t.get("title"))[:90]}
                for t in sorted(pub, key=lambda x: x.get("views") or 0, reverse=True)[:8]]
 
-        drop_ids = _json.loads(self.get_setting("drop_task_ids") or "[]")
-        dv = dr = 0
-        for i in drop_ids:
-            tk = self.get_task(i)
-            if tk:
-                dv += tk.get("views") or 0
-                dr += tk.get("replies") or 0
+        # Today's numbers — a goal that RESETS every day (updated_at is stamped at
+        # publish and left untouched by metric refresh, so it's a stable "today" key).
+        today_key = today.isoformat()
+        day_posts = [p for p in pub if (p.get("updated_at") or "")[:10] == today_key
+                     and (p.get("published_id") or "")]
+        day_views = sum(p.get("views") or 0 for p in day_posts)
+        day_comments = sum(p.get("replies") or 0 for p in day_posts)
+        day_likes = sum(p.get("likes") or 0 for p in day_posts)
 
         return {
             "overall": {**tot, "accounts": len(accounts),
@@ -1682,9 +1713,10 @@ class Store:
             "accounts": accounts, "top": top, "trend": trend,
             "goal": {"views": tot["views"], "comments": tot["replies"], "likes": tot["likes"],
                      "target_views": goal_views, "target_comments": goal_comments},
-            "drop": {"views": dv, "comments": dr, "posts": len(drop_ids),
-                     "target_views": int(self.get_setting("drop_goal_views") or 0),
-                     "target_comments": int(self.get_setting("drop_goal_comments") or 0)},
+            "day": {"views": day_views, "comments": day_comments, "likes": day_likes,
+                    "posts": len(day_posts),
+                    "target_views": int(self.get_setting("goal_day_views", "4000") or 4000),
+                    "target_comments": int(self.get_setting("goal_day_comments", "60") or 60)},
         }
 
     def legends(self, min_views: int = 1000, limit: int = 12) -> List[dict]:

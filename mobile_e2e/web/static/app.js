@@ -100,14 +100,12 @@ function emptyState(msg, hint, icon = "∅") {
 }
 
 // --- tabs ------------------------------------------------------------------
-const TAB_KEYS = { dashboard: "nav.dashboard", kpi: "nav.kpi", accounts: "nav.accounts", tasks: "nav.tasks", studio: "nav.studio", warmup: "nav.warmup", followups: "nav.followups", photos: "nav.photos", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
+const TAB_KEYS = { dashboard: "nav.dashboard", kpi: "nav.kpi", accounts: "nav.accounts", warmup: "nav.warmup", followups: "nav.followups", photos: "nav.photos", drops: "nav.drops", daily: "nav.daily", legends: "nav.legends", calendar: "nav.calendar", runs: "nav.runs", stats: "nav.stats", analytics: "nav.analytics", structure: "nav.structure", audit: "nav.audit", settings: "nav.settings" };
 let currentTab = "dashboard";
 function renderTab(name) {
   if (name === "dashboard") loadDashboard();
   if (name === "kpi") loadKPI();
   if (name === "accounts") loadAccounts();
-  if (name === "tasks") { loadAccountOptions(); loadTasks(); loadAiUsage(); }
-  if (name === "studio") loadStudio();
   if (name === "warmup") loadWarmup();
   if (name === "followups") loadFollowups();
   if (name === "photos") loadPhotos();
@@ -206,10 +204,30 @@ async function loadDailyBrief() {
   box.append(el("div", { class: "da-when",
     text: t("da.done").replace("{ago}", d.age == null ? "" : fmtAgo(d.age))
       + (b.drop_label ? ` · ${b.drop_label} → #${b.drop_id}` : "") }));
+  if (b.verdict) {
+    const low = b.verdict.toLowerCase();
+    const bad = /провал|нет цифр|нет росту|нема цифр|падени|слаб/.test(low);
+    const good = /рост|есть цифр|сильн|легенд/.test(low);
+    box.append(el("div", { class: "da-verdict " + (bad ? "bad" : good ? "good" : "mid") },
+      el("span", { class: "da-v-i", text: bad ? "🔴" : good ? "🟢" : "🟡" }),
+      el("b", { text: b.verdict })));
+  }
   if (b.analysis) box.append(el("div", { class: "da-block" },
     el("div", { class: "da-lbl", text: t("da.analysis") }), el("p", { text: b.analysis })));
+  if (b.signals && b.signals.length) {
+    const blk = el("div", { class: "da-block" }, el("div", { class: "da-lbl", text: t("da.signals") }));
+    const ul = el("ul", { class: "da-list signals" });
+    b.signals.forEach(s => ul.append(el("li", { text: s })));
+    blk.append(ul); box.append(blk);
+  }
   if (b.strategy) box.append(el("div", { class: "da-block" },
     el("div", { class: "da-lbl", text: t("da.strategy") }), el("p", { text: b.strategy })));
+  if (b.hypotheses && b.hypotheses.length) {
+    const blk = el("div", { class: "da-block" }, el("div", { class: "da-lbl", text: t("da.hypotheses") }));
+    const ul = el("ul", { class: "da-list hyp" });
+    b.hypotheses.forEach(h => ul.append(el("li", { text: h })));
+    blk.append(ul); box.append(blk);
+  }
   if (b.drop_id) box.append(el("div", { class: "da-drop" },
     el("span", { text: (b.drop_label || t("da.drop").replace("{n}", b.posts)) + ` — ${b.posts} ${t("stats.posts")}` }),
     el("button", { class: "mini", text: t("da.open"), onclick: () => showTab("drops") })));
@@ -368,7 +386,7 @@ async function loadAiUsage() {
 }
 
 // --- batch of scheduled posts ----------------------------------------------
-$("#batch-form").addEventListener("submit", async (e) => {
+$("#batch-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const briefs = (fd.get("briefs") || "").split("\n").map(s => s.trim()).filter(Boolean).slice(0, 10);
@@ -493,13 +511,13 @@ async function executeTask(id) {
   }
   loadTasks(); loadAiUsage(); if (currentTab === "dashboard") loadDashboard();
 }
-$("#task-form").addEventListener("submit", async (e) => {
+$("#task-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
   if (data.account_id) data.account_id = Number(data.account_id);
   await jpost("/api/tasks", data); e.target.reset(); loadTasks();
 });
-$("#task-filter-status").addEventListener("change", loadTasks);
+$("#task-filter-status")?.addEventListener("change", loadTasks);
 
 // --- Structure diagram (SVG architecture map) ------------------------------
 const STRUCT_CAT = {
@@ -1417,7 +1435,7 @@ function renderPlanCards(briefs) {
     el("button", { id: "studio-create", text: t("studio.create"), onclick: createStudioTasks }));
   wrap.append(bar);
 }
-$("#studio-add").addEventListener("click", () => {
+$("#studio-add")?.addEventListener("click", () => {
   const wrap = $("#studio-cards");
   if (wrap.querySelector(".empty")) wrap.innerHTML = "";
   let bar = wrap.querySelector(".form-actions");
@@ -1425,7 +1443,7 @@ $("#studio-add").addEventListener("click", () => {
   if (bar) wrap.insertBefore(card, bar);
   else { wrap.append(card); wrap.append(el("div", { class: "form-actions", style: "margin-top:12px" }, el("button", { id: "studio-create", text: t("studio.create"), onclick: createStudioTasks }))); }
 });
-$("#studio-plan").addEventListener("click", async () => {
+$("#studio-plan")?.addEventListener("click", async () => {
   const prompt = $("#studio-prompt").value.trim();
   if (!prompt) { toast(t("studio.need_prompt"), "warn"); return; }
   const btn = $("#studio-plan"); const label = btn.textContent; btn.disabled = true; btn.textContent = "…";
@@ -1436,7 +1454,7 @@ $("#studio-plan").addEventListener("click", async () => {
   } catch (err) { toast(String(err), "error", 6000); }
   btn.disabled = false; btn.textContent = label; loadStudioQuota();
 });
-$("#studio-save-prompt").addEventListener("click", async () => {
+$("#studio-save-prompt")?.addEventListener("click", async () => {
   const text = $("#studio-prompt").value.trim();
   if (!text) { toast(t("studio.need_prompt"), "warn"); return; }
   const nameEl = el("input", { class: "modal-input", placeholder: t("studio.prompt_name") });
@@ -1480,7 +1498,7 @@ async function createStudioTasks() {
 }
 // --- autopilot agent -------------------------------------------------------
 const AGENT_TOOL_LABEL = { list_accounts: "📋", get_analytics: "📊", create_tasks: "✍" };
-$("#agent-run").addEventListener("click", async () => {
+$("#agent-run")?.addEventListener("click", async () => {
   const instruction = $("#agent-instruction").value.trim();
   if (!instruction) { toast(t("agent.need"), "warn"); return; }
   const btn = $("#agent-run"); const label = btn.textContent; btn.disabled = true; btn.textContent = "…";
@@ -1530,48 +1548,91 @@ function renderDraftCards(batchId, tasks) {
     }})));
 }
 
-// --- content calendar (week view) ------------------------------------------
-function startOfWeek(d) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setDate(x.getDate() - day); x.setHours(0, 0, 0, 0); return x; }
+// --- content calendar (month view, phone-style) ----------------------------
 function localKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
-let calWeekStart = startOfWeek(new Date());
+let calMonth = (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
+// A post lands on the day it went out (published) or, if still planned, its scheduled day.
+function taskDayKey(tk) {
+  if (tk.published_id && tk.updated_at) return tk.updated_at.slice(0, 10);
+  if (tk.scheduled_for) return tk.scheduled_for.slice(0, 10);
+  return null;
+}
+function taskTime(tk) { return ((tk.published_id ? tk.updated_at : tk.scheduled_for) || "").slice(11, 16); }
+function taskIcon(tk) { return tk.published_id ? "✅" : (["failed", "error"].includes(tk.status) ? "⚠️" : "⏳"); }
+function cleanPost(tk) { return (tk.result || tk.title || "—").replace(/^\[published[^\]]*\]\s*/, "").replace(/\n/g, " "); }
 async function loadCalendar() {
   const rows = await api("/api/tasks");
-  const scheduled = rows.filter(tk => tk.scheduled_for);
+  const posts = rows.filter(tk => (tk.kind || "post") === "post");
+  const byDay = {};
+  posts.forEach(tk => { const k = taskDayKey(tk); if (k) (byDay[k] = byDay[k] || []).push(tk); });
+
   const ctrl = $("#cal-controls"); ctrl.innerHTML = "";
-  const end = new Date(calWeekStart); end.setDate(end.getDate() + 6);
-  const title = el("h2", { text: `${calWeekStart.getDate()} ${calWeekStart.toLocaleDateString(window.I18N.lang, { month: "short" })} — ${end.getDate()} ${end.toLocaleDateString(window.I18N.lang, { month: "short" })}` });
+  const mName = calMonth.toLocaleDateString(window.I18N.lang, { month: "long", year: "numeric" });
+  const title = el("h2", { text: mName.charAt(0).toUpperCase() + mName.slice(1) });
   const nav = el("div", { class: "cal-nav" },
-    el("button", { class: "mini ghost", text: "‹", onclick: () => { calWeekStart.setDate(calWeekStart.getDate() - 7); loadCalendar(); } }),
-    el("button", { class: "mini ghost", text: t("cal.today"), onclick: () => { calWeekStart = startOfWeek(new Date()); loadCalendar(); } }),
-    el("button", { class: "mini ghost", text: "›", onclick: () => { calWeekStart.setDate(calWeekStart.getDate() + 7); loadCalendar(); } }));
+    el("button", { class: "mini ghost", text: "‹", onclick: () => { calMonth.setMonth(calMonth.getMonth() - 1); loadCalendar(); } }),
+    el("button", { class: "mini ghost", text: t("cal.today"), onclick: () => { calMonth = new Date(); calMonth.setDate(1); calMonth.setHours(0, 0, 0, 0); loadCalendar(); } }),
+    el("button", { class: "mini ghost", text: "›", onclick: () => { calMonth.setMonth(calMonth.getMonth() + 1); loadCalendar(); } }));
   ctrl.append(title, nav);
 
-  const grid = el("div", { class: "cal-grid" });
-  const todayKey = localKey(new Date());
+  const grid = el("div", { class: "cal-month" });
   const dayNames = window.I18N.lang === "en"
     ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(calWeekStart); day.setDate(day.getDate() + i);
-    const key = localKey(day);
-    const col = el("div", { class: "cal-day" + (key === todayKey ? " today" : "") });
-    col.append(el("div", { class: "cal-date", text: `${dayNames[i]} ${day.getDate()}` }));
-    const items = scheduled.filter(tk => (tk.scheduled_for || "").slice(0, 10) === key)
-      .sort((a, b) => (a.scheduled_for || "").localeCompare(b.scheduled_for || ""));
-    items.forEach(tk => {
-      const it = el("div", { class: "cal-item " + tk.status, onclick: () => showTaskModal(tk) });
-      it.append(el("span", { class: "cal-time", text: (tk.scheduled_for || "").slice(11, 16) }));
-      it.append(el("span", { class: "cal-ttl", text: tk.title || "—" }));
-      col.append(it);
-    });
-    if (!items.length) col.append(el("div", { class: "cal-none", text: "" }));
-    grid.append(col);
+  dayNames.forEach(n => grid.append(el("div", { class: "cal-dow", text: n })));
+
+  const y = calMonth.getFullYear(), mo = calMonth.getMonth();
+  const startOffset = (new Date(y, mo, 1).getDay() + 6) % 7; // Monday = 0
+  const daysInMonth = new Date(y, mo + 1, 0).getDate();
+  const todayKey = localKey(new Date());
+  for (let i = 0; i < startOffset; i++) grid.append(el("div", { class: "cal-cell empty" }));
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(y, mo, day), key = localKey(date);
+    const items = (byDay[key] || []).sort((a, b) => taskTime(a).localeCompare(taskTime(b)));
+    const published = items.filter(tk => tk.published_id).length;
+    const planned = items.length - published;
+    const cell = el("div", { class: "cal-cell" + (key === todayKey ? " today" : "") + (items.length ? " has" : "") });
+    cell.append(el("div", { class: "cal-cell-num", text: String(day) }));
+    if (items.length) {
+      cell.onclick = () => showDayModal(date, items);
+      const badges = el("div", { class: "cal-badges" });
+      if (published) badges.append(el("span", { class: "cal-b pub", text: `✅ ${published}` }));
+      if (planned) badges.append(el("span", { class: "cal-b plan", text: `⏳ ${planned}` }));
+      cell.append(badges);
+      const tv = items.reduce((s, tk) => s + (tk.views || 0), 0);
+      if (tv) cell.append(el("div", { class: "cal-cell-views", text: `${fmtNum(tv)} 👁` }));
+    }
+    grid.append(cell);
   }
-  $("#calendar").innerHTML = ""; $("#calendar").append(grid);
+  $("#calendar").innerHTML = "";
+  $("#calendar").append(grid, el("div", { class: "cal-hint", text: t("cal.tapday") }));
+}
+function showDayModal(date, items) {
+  const published = items.filter(tk => tk.published_id).length;
+  const totV = items.reduce((s, tk) => s + (tk.views || 0), 0);
+  const totL = items.reduce((s, tk) => s + (tk.likes || 0), 0);
+  const body = el("div", { class: "day-modal" });
+  body.append(el("div", { class: "dm-sum" },
+    el("b", { text: `${published}/${items.length} ${t("cal.out")}` }),
+    el("span", { text: totV ? ` · ${fmtNum(totV)} 👁 · ${totL} ❤` : "" })));
+  items.forEach(tk => {
+    const row = el("div", { class: "dm-post " + (tk.published_id ? "pub" : tk.status), onclick: () => showTaskModal(tk) });
+    row.append(el("span", { class: "dm-ic", text: taskIcon(tk) }));
+    row.append(el("span", { class: "dm-time", text: taskTime(tk) }));
+    const main = el("div", { class: "dm-main" });
+    main.append(el("div", { class: "dm-ttl", text: cleanPost(tk).slice(0, 90) }));
+    if (tk.published_id) main.append(el("div", { class: "dm-metrics", text: `${fmtNum(tk.views || 0)} 👁 · ${tk.likes || 0} ❤ · ${tk.replies || 0} 💬` }));
+    row.append(main);
+    body.append(row);
+  });
+  const dName = date.toLocaleDateString(window.I18N.lang, { day: "numeric", month: "long" });
+  modal({ title: dName, body, actions: [{ label: t("btn.close"), value: true }] });
 }
 function showTaskModal(tk) {
   const body = el("div", {});
-  body.append(el("div", { class: "tm-meta", text: `${t("col.status")}: ${t("status." + tk.status)} · ${fmtDate(tk.scheduled_for)}` }));
-  body.append(el("pre", { class: "modal-pre", text: tk.result || tk.payload || "—" }));
+  const when = tk.published_id ? tk.updated_at : tk.scheduled_for;
+  body.append(el("div", { class: "tm-meta", text: `${taskIcon(tk)} ${t("status." + tk.status)} · ${fmtDate(when)}` }));
+  if (tk.published_id) body.append(el("div", { class: "tm-meta", text: `${fmtNum(tk.views || 0)} 👁 · ${tk.likes || 0} ❤ · ${tk.replies || 0} 💬` }));
+  body.append(el("pre", { class: "modal-pre", text: cleanPost(tk) }));
   modal({ title: tk.title || "—", body, actions: [{ label: t("btn.close"), value: true }] });
 }
 
@@ -1619,6 +1680,43 @@ function goalCard({ title, cur, target, unit, sub, c1, c2 }) {
   card.append(ringWrap, info);
   countUp(pctNum, pct); countUp(curNum, cur);
   return card;
+}
+// Day-over-day deltas: было X → +Δ → стало Y, per priority metric.
+function renderDeltas(dx, day) {
+  const box = $("#stats-deltas"); if (!box) return;
+  box.innerHTML = "";
+  const m = (dx && dx.metrics) || {};
+  const defs = [
+    { k: "followers", lab: t("dg.followers"), icon: "➕", c: "#ff2e7e" },
+    { k: "likes", lab: t("dg.likes"), icon: "❤", c: "#b14bff" },
+    { k: "clicks", lab: t("dg.clicks"), icon: "🔗", c: "#22d3c5" },
+    { k: "profile_views", lab: t("stats.profileviews"), icon: "👁", c: "#3b82f6" },
+  ];
+  defs.forEach(def => {
+    const v = m[def.k] || { cur: 0, prev: 0, delta: 0 };
+    const up = v.delta > 0, flat = v.delta === 0;
+    const card = el("div", { class: "delta-card" });
+    card.style.setProperty("--dc", def.c);
+    card.append(el("div", { class: "delta-top" },
+      el("span", { class: "delta-ic", text: def.icon }),
+      el("span", { class: "delta-lab", text: def.lab })));
+    card.append(el("div", { class: "delta-now", text: fmtNum(v.cur) }));
+    card.append(el("div", { class: "delta-chg " + (up ? "up" : flat ? "flat" : "down") },
+      el("span", { class: "delta-was", text: `${fmtNum(v.prev)} →` }),
+      el("b", { text: `${up ? "+" : ""}${fmtNum(v.delta)}` })));
+    box.append(card);
+  });
+  if (day) {
+    const card = el("div", { class: "delta-card" });
+    card.style.setProperty("--dc", "#ffb020");
+    card.append(el("div", { class: "delta-top" },
+      el("span", { class: "delta-ic", text: "🚀" }),
+      el("span", { class: "delta-lab", text: t("stats.posts") })));
+    card.append(el("div", { class: "delta-now", text: fmtNum(day.posts) }));
+    card.append(el("div", { class: "delta-chg " + (day.posts ? "up" : "flat") },
+      el("b", { text: t("stats.today.out") })));
+    box.append(card);
+  }
 }
 function statTile({ label, value, unit, sub, accent, dec }) {
   const num = el("span", { class: "m-num", text: "0" });
@@ -1669,9 +1767,10 @@ async function loadStats() {
     goalCard({ title: t("goal.main.views"), cur: d.goal.views, target: d.goal.target_views, unit: t("unit.views"), sub: t("goal.window"), c1: "#b14bff", c2: "#22d3c5" }),
     goalCard({ title: t("goal.main.comments"), cur: d.goal.comments, target: d.goal.target_comments, unit: t("unit.comments"), sub: t("goal.window"), c1: "#ff2e7e", c2: "#b14bff" }),
   );
-  if (d.drop && d.drop.posts) {
-    g.append(goalCard({ title: t("goal.drop"), cur: d.drop.views, target: d.drop.target_views || 1, unit: t("unit.views"), sub: `💬 ${d.drop.comments}/${d.drop.target_comments} · ${d.drop.posts} ${t("stats.posts")}`, c1: "#22d3c5", c2: "#3b82f6" }));
+  if (d.day) {
+    g.append(goalCard({ title: t("goal.drop"), cur: d.day.views, target: d.day.target_views || 1, unit: t("unit.views"), sub: `💬 ${d.day.comments}/${d.day.target_comments} · ❤ ${d.day.likes} · ${d.day.posts} ${t("stats.posts")}`, c1: "#22d3c5", c2: "#3b82f6" }));
   }
+  renderDeltas(d.deltas, d.day);
   // overall
   const o = $("#stats-overall"); o.innerHTML = "";
   o.append(
