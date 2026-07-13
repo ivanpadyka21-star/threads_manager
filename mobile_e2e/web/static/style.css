@@ -580,7 +580,8 @@ label.auto input { width: auto; margin: 0; }
 /* Daily stability goal */
 .daily-goal-box { margin: 14px 0 4px; }
 .daily-goal-box:empty { display: none; }
-.dg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.dg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.dg-head .delta-tabs { margin-bottom: 0; }
 .dg-title { font-weight: 700; font-size: 15px; }
 .dg-badge { font: 11px "JetBrains Mono", monospace; letter-spacing: .08em; padding: 4px 11px; border-radius: 999px; color: var(--amber); background: rgba(255,176,32,.1); border: 1px solid rgba(255,176,32,.28); }
 .dg-badge.hit { color: #34d399; background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.3); }

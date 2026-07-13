@@ -1838,22 +1838,33 @@ async function loadDashGoals() {
   } catch (e) { g.innerHTML = ""; }
 }
 // Daily stability goal: what we must hit EVERY day to grow (follows/likes/clicks).
+let dgPeriod = "today";
+let dgData = null;
 function renderDailyGoal(dg) {
+  if (dg) dgData = dg;
   const box = $("#daily-goal"); if (!box) return;
-  if (!dg) { box.innerHTML = ""; return; }
+  if (!dgData) { box.innerHTML = ""; return; }
+  const P = dgData[dgPeriod] || {};
   const defs = [
     { k: "followers", lab: t("dg.followers"), icon: "➕", c: "#ff2e7e" },
     { k: "likes", lab: t("dg.likes"), icon: "❤", c: "#b14bff" },
     { k: "clicks", lab: t("dg.clicks"), icon: "🔗", c: "#22d3c5" },
   ];
-  const hit = defs.every(x => (dg[x.k] || {}).pct >= 100);
+  const hit = defs.every(x => (P[x.k] || {}).pct >= 100);
   box.innerHTML = "";
+  const tabs = el("div", { class: "delta-tabs" });
+  DELTA_PERIODS.forEach(p => tabs.append(el("button", {
+    class: "delta-tab" + (p.k === dgPeriod ? " active" : ""),
+    text: t(p.lab),
+    onclick: () => { dgPeriod = p.k; renderDailyGoal(); },
+  })));
   box.append(el("div", { class: "dg-head" },
     el("span", { class: "dg-title", text: t("dg.title") }),
+    tabs,
     el("span", { class: "dg-badge " + (hit ? "hit" : ""), text: hit ? t("dg.done") : t("dg.push") })));
   const row = el("div", { class: "dg-metrics" });
   defs.forEach(def => {
-    const m = dg[def.k] || { cur: 0, target: 0, pct: 0 };
+    const m = P[def.k] || { cur: 0, target: 0, pct: 0 };
     const cell = el("div", { class: "dg-cell" });
     cell.append(el("div", { class: "dg-cell-top" },
       el("span", { class: "dg-ic", text: def.icon }),

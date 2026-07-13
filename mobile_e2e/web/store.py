@@ -358,6 +358,56 @@ class Store:
             "clicks": _m("clicks", clicks_today, 25),
         }
 
+    def daily_goal_periods(self) -> dict:
+        """The stability goal (followers/likes/clicks vs target) for THREE periods:
+        today, yesterday and last 7 days. Followers/clicks come from account-insight
+        deltas; likes from post-likes in the period. Weekly target = daily × 7."""
+        from datetime import date, timedelta
+        pd = self._period_deltas_raw()
+        with self._lock:
+            rows = [dict(r) for r in self._conn.execute(
+                "SELECT substr(updated_at,1,10) d, COALESCE(likes,0) lk FROM tasks "
+                "WHERE kind='post' AND published_id != '' AND published_id IS NOT NULL"
+            ).fetchall()]
+        try:
+            today_d = date.fromisoformat(_today())
+        except ValueError:
+            today_d = date.today()
+        t_key = today_d.isoformat()
+        y_key = (today_d - timedelta(days=1)).isoformat()
+        week_start = (today_d - timedelta(days=6)).isoformat()
+        likes = {"today": 0, "yesterday": 0, "week": 0}
+        for r in rows:
+            d, lk = r["d"], int(r["lk"] or 0)
+            if not d:
+                continue
+            if d == t_key:
+                likes["today"] += lk
+            if d == y_key:
+                likes["yesterday"] += lk
+            if d >= week_start:
+                likes["week"] += lk
+        base = {
+            "followers": int(self.get_setting("goal_day_followers", "30") or 30),
+            "likes": int(self.get_setting("goal_day_likes", "50") or 50),
+            "clicks": int(self.get_setting("goal_day_clicks", "25") or 25),
+        }
+
+        def _mk(period, mult):
+            pm = pd[period]["metrics"]
+            cur = {"followers": max(0, pm["followers"]["delta"]),
+                   "likes": likes[period],
+                   "clicks": max(0, pm["clicks"]["delta"])}
+            out = {}
+            for k in ("followers", "likes", "clicks"):
+                tgt = base[k] * mult
+                out[k] = {"cur": cur[k], "target": tgt,
+                          "pct": min(100, round(cur[k] * 100 / tgt)) if tgt else 0}
+            return out
+
+        return {"today": _mk("today", 1), "yesterday": _mk("yesterday", 1),
+                "week": _mk("week", 7)}
+
     def _period_deltas_raw(self) -> dict:
         """Portfolio "было X → +Δ → стало Y" numbers for THREE periods at once:
         today, yesterday and the last 7 days. Computed per account then summed,
