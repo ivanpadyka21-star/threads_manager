@@ -861,6 +861,16 @@ async function loadKPI() {
         el("a", { href: links[0].url, target: "_blank", class: "kpi-link-u", text: short }),
         el("b", { class: "kpi-link-v", text: fmtNum(links[0].value) })));
     }
+    // registry link (what this account SHOULD carry in bio) + mismatch flag
+    if (a.link) {
+      const norm = u => (u || "").replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+      const mismatch = a.link_live && norm(a.link_live) !== norm(a.link);
+      const row = el("div", { class: "kpi-biolink" + (mismatch ? " warn" : "") },
+        el("span", { class: "kpi-biolink-i", text: "🎯" }),
+        el("a", { href: a.link, target: "_blank", class: "kpi-biolink-u", text: a.link.replace(/^https?:\/\//, "") }));
+      if (mismatch) row.append(el("span", { class: "kpi-biolink-warn", text: t("kpi.link.mismatch") }));
+      card.append(row);
+    }
     // profile-views sparkline
     card.append(el("div", { class: "kpi-spark" }, sparkline(a.views_series, "#7ee7ff")));
     // demographics or locked

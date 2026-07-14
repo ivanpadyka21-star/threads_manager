@@ -712,6 +712,11 @@ label.auto input { width: auto; margin: 0; }
 .kpi-link-u { color: var(--accent-2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .kpi-link-u:hover { text-decoration: underline; }
 .kpi-link-v { color: #34d399; font-weight: 800; }
+.kpi-biolink { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 2px 0; border-radius: var(--radius-sm); background: rgba(177,75,255,.07); border: 1px solid rgba(177,75,255,.22); font-size: 12.5px; flex-wrap: wrap; }
+.kpi-biolink-u { color: var(--accent); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.kpi-biolink-u:hover { text-decoration: underline; }
+.kpi-biolink.warn { background: rgba(255,176,32,.09); border-color: rgba(255,176,32,.35); }
+.kpi-biolink-warn { color: var(--amber); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .kpi-spark { margin: 6px 0 12px; }
 .kpi-demo { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
 .kpi-demo-h { font-size: 12px; color: var(--dim); margin-bottom: 8px; }

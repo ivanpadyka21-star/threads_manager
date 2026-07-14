@@ -225,6 +225,9 @@ class Store:
         self._ensure_column("tasks", "theme", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "credentials_file", "TEXT DEFAULT ''")
         self._ensure_column("accounts", "persona", "TEXT DEFAULT ''")
+        # The bio link (t.me/...) this account should carry — a registry the owner
+        # keeps in sync with the Threads app; KPI flags when the live link differs.
+        self._ensure_column("accounts", "link", "TEXT DEFAULT ''")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
         # Did the person reply back to OUR published reply? (engagement tracking)
         self._ensure_column("warmup_actions", "got_reply", "INTEGER DEFAULT 0")
@@ -297,6 +300,8 @@ class Store:
                 "demo_locked": followers < 100,
                 "demo_needed": max(0, 100 - followers),
                 "click_links": links,
+                "link": a.get("link", ""),
+                "link_live": (links[0]["url"] if links else ""),
             })
             for k in totals:
                 totals[k] += latest.get(k, 0)
@@ -554,6 +559,7 @@ class Store:
         allowed = {
             "name", "handle", "platform", "proxy_string",
             "daily_limit", "tone", "status", "notes", "credentials_file", "persona",
+            "link",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
