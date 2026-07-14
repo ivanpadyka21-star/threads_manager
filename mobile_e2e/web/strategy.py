@@ -582,11 +582,15 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
 
     hmap = {(a.get("handle") or "").lstrip("@").lower(): a["id"]
             for a in store.list_accounts() if a.get("handle")}
-    strong = [6, 4, 1, 5]  # sex777777amelia, _.amelka_7777, 0000wwwqt, amelia.07070
+    # Only accounts in the active rotation get drops (the rest are paused). If a
+    # post names a paused/unknown account, it's remapped onto an active one.
+    active = store.active_account_ids()
     task_ids = []
     for i, p in enumerate(posts):
         h = str(p.get("account", "")).lstrip("@").lower()
-        acc = hmap.get(h) or strong[i % len(strong)]
+        acc = hmap.get(h)
+        if acc not in active:
+            acc = active[i % len(active)] if active else acc
         text = p["text"].strip()
         t = store.add_task(account_id=acc, kind="post", title=text[:40], payload=text)
         task_ids.append(t["id"])

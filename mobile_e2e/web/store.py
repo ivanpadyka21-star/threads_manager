@@ -573,6 +573,15 @@ class Store:
         self.log("account.update", str(list(fields.keys())), account_id)
         return self.get_account(account_id)
 
+    def active_account_ids(self) -> List[int]:
+        """Accounts currently IN rotation for drops (setting ``active_accounts`` =
+        comma-separated ids). Empty/unset → all accounts. Stale ids are dropped."""
+        raw = self.get_setting("active_accounts", "") or ""
+        existing = {a["id"] for a in self.list_accounts()}
+        ids = [int(x) for x in raw.replace(" ", "").split(",")
+               if x.isdigit() and int(x) in existing]
+        return ids or sorted(existing)
+
     def delete_account(self, account_id: int) -> None:
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM tasks WHERE account_id = ?", (account_id,))
