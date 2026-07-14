@@ -218,6 +218,22 @@ def account_username(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> str:
     return asyncio.run(_username_async(credentials_file))
 
 
+def account_health(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> dict:
+    """Liveness probe: hit /me and classify the account.
+
+    Returns ``{status, username}`` where status is one of: ``alive`` (profile
+    returned), ``blocked`` (/me returns null — Meta checkpoint / number
+    verification), ``error`` (token/API failure), ``no-token`` (no creds file).
+    """
+    if not credentials_file or not Path(credentials_file).is_file():
+        return {"status": "no-token", "username": ""}
+    try:
+        u = asyncio.run(_username_async(credentials_file))
+        return {"status": "alive", "username": u} if u else {"status": "blocked", "username": ""}
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "username": "", "error": str(exc)[:140]}
+
+
 async def _account_insights_async(user_id: str, credentials_file: str, days: int) -> dict:
     import time as _time
     from pythreads.api import API

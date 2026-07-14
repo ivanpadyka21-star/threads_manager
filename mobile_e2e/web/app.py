@@ -258,6 +258,19 @@ def create_app(
         db.delete_account(account_id)
         return jsonify({"deleted": account_id})
 
+    @app.post("/api/accounts/health")
+    def refresh_account_health():
+        """Probe every account's /me and store alive/blocked/error per account.
+        Note: these calls go out from THIS machine's IP — run on demand, not on a
+        loop, to avoid correlating all accounts to one address."""
+        results = []
+        for a in db.list_accounts():
+            creds = a.get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
+            h = threads_client.account_health(creds)
+            db.set_account_health(a["id"], h["status"], h.get("username", ""))
+            results.append({"id": a["id"], "handle": a["handle"], "status": h["status"]})
+        return jsonify({"results": results})
+
     # -- tasks --------------------------------------------------------------
     @app.get("/api/tasks")
     def list_tasks():

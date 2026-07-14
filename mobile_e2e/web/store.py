@@ -592,7 +592,23 @@ class Store:
         d = dict(row)
         d["used_today"] = self._used_today(d["id"])
         d["remaining_today"] = max(0, d["daily_limit"] - d["used_today"])
+        d["health"] = self.get_account_health(d["id"])
         return d
+
+    def set_account_health(self, account_id: int, status: str, username: str = "") -> None:
+        """Record last liveness probe of an account (alive/blocked/error/no-token)."""
+        import json as _json
+        self.set_setting(f"acct_health:{account_id}",
+                         _json.dumps({"status": status, "username": username, "at": _now()},
+                                     ensure_ascii=False))
+
+    def get_account_health(self, account_id: int) -> dict:
+        import json as _json
+        raw = self.get_setting(f"acct_health:{account_id}", "")
+        try:
+            return _json.loads(raw) if raw else {"status": "unknown"}
+        except Exception:  # noqa: BLE001
+            return {"status": "unknown"}
 
     # -- tasks --------------------------------------------------------------
     def add_task(self, **fields) -> dict:

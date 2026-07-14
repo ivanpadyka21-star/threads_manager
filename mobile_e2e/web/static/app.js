@@ -330,7 +330,7 @@ async function loadAccounts() {
       el("div", { class: "acct-id" },
         el("div", { class: "acct-name", text: r.name }),
         el("div", { class: "acct-handle", text: r.handle || "—" })),
-      el("span", { class: "dot " + (a.state || "new"), title: t("state." + (a.state || "new")) }));
+      acctHealthBadge(r.health));
     card.append(head);
     // sparkline
     if (a.sparkline) { const sp = el("div", { class: "acct-spark" }); sp.append(barChart(a.sparkline, 240, 34)); card.append(sp); }
@@ -356,7 +356,33 @@ async function loadAccounts() {
     card.append(foot);
     grid.append(card);
   });
-  wrap.innerHTML = ""; wrap.append(grid);
+  // health summary + on-demand recheck
+  const counts = rows.reduce((m, r) => { const s = (r.health && r.health.status) || "unknown"; m[s] = (m[s] || 0) + 1; return m; }, {});
+  const checkBtn = el("button", { class: "mini", text: t("health.check"), onclick: async () => {
+    checkBtn.disabled = true; checkBtn.textContent = "…";
+    try { await jpost("/api/accounts/health"); toast(t("health.done"), "success", 2000); loadAccounts(); }
+    catch (err) { toast(String(err), "error", 6000); checkBtn.disabled = false; checkBtn.textContent = t("health.check"); }
+  }});
+  const bar = el("div", { class: "acct-controls" }, checkBtn,
+    el("span", { class: "acct-hsum" },
+      el("b", { class: "alive", text: `🟢 ${counts.alive || 0}` }),
+      el("b", { class: "blocked", text: `🔴 ${counts.blocked || 0}` }),
+      el("b", { class: "muted", text: `⚪ ${(counts.unknown || 0) + (counts["no-token"] || 0) + (counts.error || 0)}` })));
+  wrap.innerHTML = ""; wrap.append(bar, grid);
+}
+function acctHealthBadge(h) {
+  const s = (h && h.status) || "unknown";
+  const map = {
+    alive: ["🟢", t("health.alive"), "alive"],
+    blocked: ["🔴", t("health.blocked"), "blocked"],
+    error: ["⚠️", t("health.error"), "error"],
+    "no-token": ["⚪", t("health.notoken"), "notoken"],
+    unknown: ["⚪", t("health.unknown"), "unknown"],
+  };
+  const [ic, lab, cls] = map[s] || map.unknown;
+  const when = h && h.at ? " · " + h.at.slice(0, 16) : "";
+  return el("span", { class: "acct-health " + cls, title: lab + when },
+    el("span", { text: ic }), el("span", { class: "ah-l", text: lab }));
 }
 $("#account-form").addEventListener("submit", async (e) => {
   e.preventDefault();
