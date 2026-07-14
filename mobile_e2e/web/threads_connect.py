@@ -106,10 +106,14 @@ def main() -> None:
     print("   ", auth_url, "\n")
     print(f">>> Waiting for the redirect on {redirect}")
     print("    (Your browser may warn about the self-signed localhost cert - accept it.)\n")
-    try:
-        webbrowser.open(auth_url)
-    except Exception:  # noqa: BLE001
-        pass
+    # Skip auto-opening the system browser when E2E_NO_BROWSER=1 — for antidetect
+    # setups where the URL must be pasted into a specific profile, not the default
+    # browser (which would leak the real IP / open the wrong session).
+    if os.getenv("E2E_NO_BROWSER") != "1":
+        try:
+            webbrowser.open(auth_url)
+        except Exception:  # noqa: BLE001
+            pass
 
     httpd.serve_forever()  # blocks until the handler calls shutdown()
 
