@@ -1066,7 +1066,7 @@ def main() -> None:
         PostScheduler(store, interval_seconds=30).start()
         StrategyScheduler(store, interval_seconds=300).start()
     host = os.getenv("E2E_WEB_HOST", "127.0.0.1")
-    port = int(os.getenv("E2E_WEB_PORT", "5000"))
+    port = int(os.getenv("E2E_WEB_PORT", "3000"))
     # Set E2E_WEB_DEBUG=1 for the "workshop" mode: the reloader restarts the
     # server on any Python change so edits go live without a manual restart.
     debug = os.getenv("E2E_WEB_DEBUG", "0") == "1"
