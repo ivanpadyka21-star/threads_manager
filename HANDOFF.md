@@ -33,21 +33,17 @@ If a module turns out to be missing at runtime, `pip install <name>` it (e.g.
 `flask`, `python-dotenv`, `google-generativeai`).
 
 ## 3. Drop in the secrets bundle (from the owner)
-Decrypt the bundle the owner sent you, then place the files:
+The owner sends you `secrets_bundle.enc` and the password (separately). The
+archive keeps the correct paths, so extracting **at the repo root** puts every
+file exactly where it belongs (`.env`, `threads.crt/key`, `threads_credentials*.json`
+at the root and `dashboard.db` under `mobile_e2e/web/data/`).
 
-| File(s) | Put here |
-|---|---|
-| `.env` | repo root |
-| `threads.crt`, `threads.key` | repo root |
-| `threads_credentials*.json` | repo root |
-| `dashboard.db` | `mobile_e2e/web/data/dashboard.db` |
-
-To decrypt the bundle (owner shares the password separately):
+From the repo root:
 ```bash
-openssl enc -d -aes-256-cbc -pbkdf2 -in secrets_bundle.enc -out secrets_bundle.tar.gz
-tar -xzf secrets_bundle.tar.gz    # unpacks the files listed above
+openssl enc -d -aes-256-cbc -pbkdf2 -in /path/to/secrets_bundle.enc -out sb.tar.gz
+tar -xzf sb.tar.gz     # lands all files in place
+rm sb.tar.gz
 ```
-Then move each file to the location in the table.
 
 > These files are already in `.gitignore` — **never commit them.**
 
