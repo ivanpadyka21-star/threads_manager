@@ -717,6 +717,11 @@ label.auto input { width: auto; margin: 0; }
 .kpi-biolink-u:hover { text-decoration: underline; }
 .kpi-biolink.warn { background: rgba(255,176,32,.09); border-color: rgba(255,176,32,.35); }
 .kpi-biolink-warn { color: var(--amber); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.kpi-biolink.ok { background: rgba(52,211,153,.08); border-color: rgba(52,211,153,.28); }
+.kpi-biolink.pending { background: rgba(255,176,32,.08); border-color: rgba(255,176,32,.3); }
+.kpi-biolink-st { font-size: 11px; font-weight: 700; white-space: nowrap; }
+.kpi-biolink.ok .kpi-biolink-st { color: #34d399; }
+.kpi-biolink.pending .kpi-biolink-st { color: var(--amber); }
 .kpi-spark { margin: 6px 0 12px; }
 .kpi-demo { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
 .kpi-demo-h { font-size: 12px; color: var(--dim); margin-bottom: 8px; }

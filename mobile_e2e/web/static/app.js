@@ -861,14 +861,16 @@ async function loadKPI() {
         el("a", { href: links[0].url, target: "_blank", class: "kpi-link-u", text: short }),
         el("b", { class: "kpi-link-v", text: fmtNum(links[0].value) })));
     }
-    // registry link (what this account SHOULD carry in bio) + mismatch flag
+    // registry link (what this account SHOULD carry in bio) + live status.
+    // We can't read the bio via API, only clicked links — so "active" means the
+    // link already shows up in click stats; otherwise it's just pending.
     if (a.link) {
       const norm = u => (u || "").replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
-      const mismatch = a.link_live && norm(a.link_live) !== norm(a.link);
-      const row = el("div", { class: "kpi-biolink" + (mismatch ? " warn" : "") },
+      const present = (a.click_links || []).some(l => norm(l.url) === norm(a.link));
+      const row = el("div", { class: "kpi-biolink " + (present ? "ok" : "pending") },
         el("span", { class: "kpi-biolink-i", text: "🎯" }),
-        el("a", { href: a.link, target: "_blank", class: "kpi-biolink-u", text: a.link.replace(/^https?:\/\//, "") }));
-      if (mismatch) row.append(el("span", { class: "kpi-biolink-warn", text: t("kpi.link.mismatch") }));
+        el("a", { href: a.link, target: "_blank", class: "kpi-biolink-u", text: a.link.replace(/^https?:\/\//, "") }),
+        el("span", { class: "kpi-biolink-st", text: present ? t("kpi.link.active") : t("kpi.link.pending") }));
       card.append(row);
     }
     // profile-views sparkline
