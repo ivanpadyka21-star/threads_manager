@@ -33,19 +33,27 @@ If a module turns out to be missing at runtime, `pip install <name>` it (e.g.
 `flask`, `python-dotenv`, `google-generativeai`).
 
 ## 3. Drop in the secrets bundle (from the owner)
-The owner sends you `secrets_bundle.enc` and the password (separately). The
-archive keeps the correct paths, so extracting **at the repo root** puts every
-file exactly where it belongs (`.env`, `threads.crt/key`, `threads_credentials*.json`
-at the root and `dashboard.db` under `mobile_e2e/web/data/`).
+The owner sends you **`smm_studio_secrets.zip`** (AES-encrypted) and the password
+**separately**. The archive keeps the correct paths, so extracting **at the repo
+root** puts every file exactly where it belongs: `.env`, `threads.crt/key` and
+`threads_credentials*.json` at the root, `dashboard.db` under `mobile_e2e/web/data/`.
 
-From the repo root:
+Extract it **into the repo root** with 7-Zip / WinRAR (right-click → Extract here,
+enter the password), keeping folder paths. Or from a terminal:
 ```bash
-openssl enc -d -aes-256-cbc -pbkdf2 -in /path/to/secrets_bundle.enc -out sb.tar.gz
-tar -xzf sb.tar.gz     # lands all files in place
-rm sb.tar.gz
+python -m pip install pyzipper
+python - <<'PY'
+import pyzipper
+with pyzipper.AESZipFile(r"C:\path\to\smm_studio_secrets.zip") as z:
+    z.setpassword(b"<password from the owner>")
+    z.extractall(".")   # run this from the repo root
+PY
 ```
 
-> These files are already in `.gitignore` — **never commit them.**
+Check afterwards: `mobile_e2e/web/data/dashboard.db` and `.env` exist.
+
+> These files hold live access tokens and the app secret. They are already in
+> `.gitignore` — **never commit them.**
 
 ## 4. Run
 ```bash
