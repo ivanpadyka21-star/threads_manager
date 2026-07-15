@@ -878,14 +878,17 @@ async function loadKPI() {
       kpiMini("🔗", a.clicks, t("kpi.clicks")),
       kpiMini("❤", a.likes, t("col.likes")),
       kpiMini("💬", a.replies, t("col.replies"))));
-    // top clicked link (e.g. the bio Telegram link)
+    // Clicked link. When a registry link is set, show ONLY that one (Meta keeps
+    // reporting old bio links forever — they'd otherwise drown the current one).
     const links = a.click_links || [];
-    if (links.length && links[0].value > 0) {
-      const short = links[0].url.replace(/^https?:\/\//, "").slice(0, 34);
+    const normU = u => (u || "").replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+    const shown = a.link ? links.find(l => normU(l.url) === normU(a.link)) : links[0];
+    if (shown && shown.value > 0) {
+      const short = shown.url.replace(/^https?:\/\//, "").slice(0, 34);
       card.append(el("div", { class: "kpi-link" },
         el("span", { class: "kpi-link-i", text: "🔗" }),
-        el("a", { href: links[0].url, target: "_blank", class: "kpi-link-u", text: short }),
-        el("b", { class: "kpi-link-v", text: fmtNum(links[0].value) })));
+        el("a", { href: shown.url, target: "_blank", class: "kpi-link-u", text: short }),
+        el("b", { class: "kpi-link-v", text: fmtNum(shown.value) })));
     }
     // registry link (what this account SHOULD carry in bio) + live status.
     // We can't read the bio via API, only clicked links — so "active" means the
