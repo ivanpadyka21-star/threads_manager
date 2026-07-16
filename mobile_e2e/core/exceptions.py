@@ -20,6 +20,15 @@ class ProxyParseError(E2EFrameworkError, ValueError):
     """
 
 
+class ProxyRequiredError(E2EFrameworkError):
+    """Raised when a request must go through a proxy but none is available.
+
+    This enforces the fail-closed rule: if an account is meant to run through a
+    proxy and that proxy is missing/unassigned, we raise *before* opening any
+    connection, so no request ever leaks out over the machine's real IP.
+    """
+
+
 class SessionError(E2EFrameworkError):
     """Base class for anything that goes wrong with a driver session."""
 

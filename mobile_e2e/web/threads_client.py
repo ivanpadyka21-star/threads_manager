@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 # Environment variables required for the official OAuth + publish flow.
 REQUIRED_ENV = [
@@ -30,6 +31,63 @@ DEFAULT_CREDENTIALS_FILE = "threads_credentials.json"
 
 class ThreadsNotConfigured(Exception):
     """Raised when a Threads action is attempted before setup is complete."""
+
+
+# --- Per-account transport (proxy + fingerprint) -------------------------------
+# Resolver maps a credentials_file to (proxy_url, fingerprint_headers,
+# require_proxy). The default is a direct connection with no extra headers, so
+# standalone/CLI use and tests keep working unchanged. The web app registers a
+# store-backed resolver at startup (see create_app) so that EVERY Threads request
+# an account makes — auth, publish, replies, insights, health — leaves through
+# that account's own proxy and carries its own stable client fingerprint.
+TransportResolver = Callable[[str], Tuple[Optional[str], Dict[str, str], bool]]
+
+
+def _default_resolver(credentials_file: str) -> Tuple[Optional[str], Dict[str, str], bool]:
+    return (None, {}, False)
+
+
+_transport_resolver: TransportResolver = _default_resolver
+
+
+def set_transport_resolver(fn: Optional[TransportResolver]) -> None:
+    """Install the resolver used to route requests through per-account proxies."""
+    global _transport_resolver
+    _transport_resolver = fn or _default_resolver
+
+
+@asynccontextmanager
+async def _open_api(credentials_file: str):
+    """Open a pythreads ``API`` whose session is bound to the account's proxy.
+
+    The proxy lives on the aiohttp *connector*, so all traffic on the session
+    goes through it; a dead/absent proxy raises before any request leaves (see
+    :mod:`mobile_e2e.core.http_session`). The fingerprint headers are applied as
+    session defaults. The session is always closed on exit.
+    """
+    from pythreads.api import API
+    from pythreads.credentials import Credentials
+    from mobile_e2e.core import http_session
+
+    with open(credentials_file, "r", encoding="utf-8") as f:
+        credentials = Credentials.from_json(f.read())
+
+    try:
+        proxy_url, headers, require_proxy = _transport_resolver(credentials_file)
+    except Exception:  # noqa: BLE001 - a broken resolver must not silently drop the proxy
+        proxy_url, headers, require_proxy = (None, {}, False)
+
+    # Label every request line with the account + the proxy it egresses through,
+    # so the request log makes it obvious each call went via its own proxy.
+    label = f"acc={os.path.basename(credentials_file)} via {http_session.mask_proxy_url(proxy_url)}"
+    session = await http_session.build_session(
+        proxy_url, headers, require_proxy=require_proxy, log_label=label)
+    try:
+        async with API(credentials=credentials, session=session) as api:
+            yield api
+    finally:
+        if not session.closed:
+            await session.close()
 
 
 def status(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> dict:
@@ -73,14 +131,7 @@ def _ensure_ready(credentials_file: str) -> None:
 
 
 async def _publish_async(text: str, credentials_file: str) -> str:
-    # Imported lazily: pythreads validates SSL env vars at import time.
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
-
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         container_id = await api.create_container(text=text)
         published_id = await api.publish_container(container_id)
         return str(published_id)
@@ -105,13 +156,9 @@ def _parse_insights(raw: dict) -> dict:
 
 
 async def _insights_async(media_id: str, credentials_file: str) -> dict:
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
     from pythreads.threads import Threads
 
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         # The Threads media-insights endpoint requires a `metric=` parameter
         # (pythreads' own insights() sends `fields=`, which the API rejects).
         url = Threads.build_graph_api_url(
@@ -139,13 +186,9 @@ def fetch_insights(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FI
 
 
 async def _replies_async(media_id: str, credentials_file: str) -> dict:
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
     from pythreads.threads import Threads
 
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         url = Threads.build_graph_api_url(
             f"{media_id}/replies",
             {"fields": "id,text,username,timestamp,is_reply_owned_by_me,"
@@ -156,13 +199,9 @@ async def _replies_async(media_id: str, credentials_file: str) -> dict:
 
 
 async def _conversation_async(media_id: str, credentials_file: str) -> dict:
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
     from pythreads.threads import Threads
 
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         url = Threads.build_graph_api_url(
             f"{media_id}/conversation",
             {"fields": "id,text,username,is_reply_owned_by_me,has_replies"},
@@ -200,13 +239,9 @@ def fetch_replies(media_id: str, credentials_file: str = DEFAULT_CREDENTIALS_FIL
 
 
 async def _username_async(credentials_file: str) -> str:
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
     from pythreads.threads import Threads
 
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         url = Threads.build_graph_api_url("me", {"fields": "username"}, api._access_token())
         r = await api._get(url)
         return str(r.get("username", "")) if isinstance(r, dict) else ""
@@ -236,14 +271,10 @@ def account_health(credentials_file: str = DEFAULT_CREDENTIALS_FILE) -> dict:
 
 async def _account_insights_async(user_id: str, credentials_file: str, days: int) -> dict:
     import time as _time
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
     from pythreads.threads import Threads
 
     since = max(1712991600, int(_time.time()) - days * 86400)
     until = int(_time.time())
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
 
     def _total(raw):
         for it in (raw or {}).get("data", []):
@@ -251,7 +282,7 @@ async def _account_insights_async(user_id: str, credentials_file: str, days: int
             if isinstance(tv, dict):
                 yield it.get("name"), int(tv.get("value") or 0)
 
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         tok = api._access_token()
         out: dict = {"followers": 0, "profile_views": 0, "profile_views_series": [],
                      "likes": 0, "replies": 0, "reposts": 0, "quotes": 0, "clicks": 0}
@@ -312,13 +343,9 @@ def fetch_account_insights(user_id: str, credentials_file: str = DEFAULT_CREDENT
 
 
 async def _demographics_async(user_id: str, credentials_file: str, breakdown: str) -> dict:
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
     from pythreads.threads import Threads
 
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         url = Threads.build_graph_api_url(
             f"{user_id}/threads_insights",
             {"metric": "follower_demographics", "breakdown": breakdown},
@@ -371,12 +398,9 @@ def publish_text(text: str, credentials_file: str = DEFAULT_CREDENTIALS_FILE) ->
 
 
 async def _publish_image_async(text: str, image_url: str, credentials_file: str) -> str:
-    from pythreads.api import API, Media, MediaType
-    from pythreads.credentials import Credentials
+    from pythreads.api import Media, MediaType
 
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         container_id = await api.create_container(
             text=text or None, media=Media(type=MediaType.IMAGE, url=image_url))
         published_id = await api.publish_container(container_id)
@@ -397,12 +421,7 @@ def publish_image(image_url: str, text: str = "",
 
 
 async def _publish_reply_async(text: str, reply_to_id: str, credentials_file: str) -> str:
-    from pythreads.api import API
-    from pythreads.credentials import Credentials
-
-    with open(credentials_file, "r", encoding="utf-8") as f:
-        credentials = Credentials.from_json(f.read())
-    async with API(credentials=credentials) as api:
+    async with _open_api(credentials_file) as api:
         # reply_to_id is supported by create_container in recent pythreads; fall
         # back to a plain container if the running version lacks the kwarg.
         try:

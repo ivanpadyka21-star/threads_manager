@@ -120,6 +120,41 @@
           </form>
         </div>
         <div class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="proxy.title">🛡️ Прокси и антидетект</h2>
+            <label class="proxy-enforce"><input type="checkbox" id="proxy-enforce">
+              <span data-i18n="proxy.enforce">Только через прокси (fail-closed)</span></label>
+          </div>
+          <p class="hint" data-i18n="proxy.hint">Каждый аккаунт ходит в Threads через свой IP и свой стабильный User-Agent. Максимум 2 аккаунта на один прокси.</p>
+          <form id="proxy-form" class="form-grid">
+            <label><span data-i18n="proxy.scheme">Тип</span>
+              <select name="scheme"><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
+            <label class="wide"><span data-i18n="proxy.bulk">Список (по одному в строке: ip:port или ip:port:login:pass)</span>
+              <textarea name="bulk" rows="3" placeholder="1.2.3.4:8080:login:pass"></textarea></label>
+            <div class="form-actions">
+              <button type="submit" data-i18n="proxy.add.btn">Добавить прокси</button>
+              <button type="button" id="proxy-autoassign" class="ghost" data-i18n="proxy.autoassign">Авто-назначить (2 на прокси)</button>
+              <output id="proxy-msg" class="hint"></output>
+            </div>
+          </form>
+          <div id="proxies-table" class="table-wrap"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2 data-i18n="apps.title">📱 Threads-приложения (мульти-app)</h2></div>
+          <p class="hint" data-i18n="apps.hint">Разные аккаунты — на разных приложениях Meta, чтобы блок одного приложения не унёс все аккаунты. Приложение используется только при авторизации; лимит 3 аккаунта на приложение.</p>
+          <form id="app-form" class="form-grid">
+            <label><span data-i18n="apps.label">Название</span> <input name="label" placeholder="напр. app ufo001"></label>
+            <label><span data-i18n="apps.appid">App ID</span> <input name="app_id" placeholder="1752043659154933"></label>
+            <label><span data-i18n="apps.secret">App Secret</span> <input name="app_secret" type="password" placeholder="секрет приложения"></label>
+            <label><span data-i18n="apps.redirect">Redirect URL</span> <input name="redirect_uri" value="https://localhost:8443/callback"></label>
+            <div class="form-actions">
+              <button type="submit" data-i18n="apps.add.btn">Добавить приложение</button>
+              <output id="app-msg" class="hint"></output>
+            </div>
+          </form>
+          <div id="apps-table" class="table-wrap"></div>
+        </div>
+        <div class="panel">
           <div class="panel-head"><h2 data-i18n="nav.accounts">Аккаунты</h2></div>
           <div id="accounts-table" class="table-wrap"></div>
         </div>

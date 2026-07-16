@@ -206,6 +206,30 @@ class Store:
                     captured_at TEXT NOT NULL,
                     UNIQUE(account_id, date)
                 );
+                CREATE TABLE IF NOT EXISTS proxies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    label TEXT DEFAULT '',
+                    scheme TEXT NOT NULL DEFAULT 'http',
+                    host TEXT NOT NULL,
+                    port INTEGER NOT NULL,
+                    login TEXT DEFAULT '',
+                    password TEXT DEFAULT '',
+                    status TEXT DEFAULT 'active',
+                    last_ip TEXT DEFAULT '',
+                    last_checked TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    UNIQUE(host, port)
+                );
+                CREATE TABLE IF NOT EXISTS threads_apps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    label TEXT DEFAULT '',
+                    app_id TEXT NOT NULL,
+                    app_secret TEXT NOT NULL,
+                    redirect_uri TEXT DEFAULT '',
+                    max_accounts INTEGER DEFAULT 3,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(app_id)
+                );
                 """
             )
         # Migrate older databases that predate newer columns.
@@ -228,6 +252,15 @@ class Store:
         # The bio link (t.me/...) this account should carry — a registry the owner
         # keeps in sync with the Threads app; KPI flags when the live link differs.
         self._ensure_column("accounts", "link", "TEXT DEFAULT ''")
+        # Per-account proxy assignment (FK into proxies) and the immutable,
+        # per-account HTTP client fingerprint (JSON: user_agent, accept_language,
+        # device_model, os). Both power anti-correlation on the Threads API path.
+        self._ensure_column("accounts", "proxy_id", "INTEGER")
+        self._ensure_column("accounts", "fingerprint", "TEXT DEFAULT ''")
+        # Which Threads app this account was authorized under (FK into
+        # threads_apps). Multi-app spreads accounts across Meta apps so one app
+        # restriction doesn't take them all down. NULL = the global .env app.
+        self._ensure_column("accounts", "app_ref", "INTEGER")
         self._ensure_column("audit", "level", "TEXT DEFAULT 'info'")
         # Did the person reply back to OUR published reply? (engagement tracking)
         self._ensure_column("warmup_actions", "got_reply", "INTEGER DEFAULT 0")
@@ -589,10 +622,16 @@ class Store:
         self.log("account.delete", "", account_id)
 
     def _account_dict(self, row: sqlite3.Row) -> dict:
+        from mobile_e2e.core import fingerprint as _fp
         d = dict(row)
         d["used_today"] = self._used_today(d["id"])
         d["remaining_today"] = max(0, d["daily_limit"] - d["used_today"])
         d["health"] = self.get_account_health(d["id"])
+        # Resolve the assigned proxy (structured dict) and parsed fingerprint so
+        # the transport layer and UI never have to re-query.
+        d["proxy"] = self.get_proxy(d["proxy_id"]) if d.get("proxy_id") else None
+        d["fingerprint"] = _fp.loads(d.get("fingerprint") or "")
+        d["app"] = self.get_app(d["app_ref"]) if d.get("app_ref") else None
         return d
 
     def set_account_health(self, account_id: int, status: str, username: str = "") -> None:
@@ -609,6 +648,308 @@ class Store:
             return _json.loads(raw) if raw else {"status": "unknown"}
         except Exception:  # noqa: BLE001
             return {"status": "unknown"}
+
+    # -- proxies ------------------------------------------------------------
+    # Each account routes ALL its Threads API traffic through its own proxy so
+    # the accounts don't all share one egress IP. MAX_ACCOUNTS_PER_PROXY caps how
+    # many accounts may share a proxy; 0 = unlimited (limit currently disabled).
+    MAX_ACCOUNTS_PER_PROXY = 0
+
+    def add_proxy(self, scheme: str, host: str, port: int, login: str = "",
+                  password: str = "", label: str = "") -> dict:
+        """Insert a proxy (idempotent on host:port). Returns the stored row.
+
+        Raises:
+            ValueError: If scheme is not http/socks5, or host/port are invalid.
+        """
+        scheme = (scheme or "http").strip().lower()
+        if scheme not in ("http", "socks5"):
+            raise ValueError(f"Unsupported proxy scheme: {scheme!r} (use http or socks5).")
+        host = (host or "").strip()
+        if not host:
+            raise ValueError("Proxy host is required.")
+        # Reject garbage/paste artifacts (slashes, spaces, stray prefixes like
+        # "65/157.22..."). A host is an IP or hostname: letters, digits, dots, dashes.
+        if not re.match(r"^[A-Za-z0-9.\-]+$", host):
+            raise ValueError(f"Invalid proxy host {host!r} — expected IP:Port or IP:Port:Login:Password.")
+        port = int(port)
+        if not 1 <= port <= 65535:
+            raise ValueError(f"Proxy port {port} out of range.")
+        with self._lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO proxies (label, scheme, host, port, login, password,
+                                        status, created_at)
+                   VALUES (:label, :scheme, :host, :port, :login, :password,
+                           'active', :created_at)
+                   ON CONFLICT(host, port) DO UPDATE SET
+                       scheme=excluded.scheme, login=excluded.login,
+                       password=excluded.password,
+                       label=CASE WHEN excluded.label != '' THEN excluded.label
+                                  ELSE proxies.label END""",
+                {"label": label.strip(), "scheme": scheme, "host": host, "port": port,
+                 "login": login.strip(), "password": password.strip(), "created_at": _now()},
+            )
+            row = self._conn.execute(
+                "SELECT * FROM proxies WHERE host = ? AND port = ?", (host, port)
+            ).fetchone()
+        return self._proxy_dict(row)
+
+    def list_proxies(self) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM proxies ORDER BY created_at ASC, id ASC"
+            ).fetchall()
+        return [self._proxy_dict(r) for r in rows]
+
+    def get_proxy(self, proxy_id: Optional[int]) -> Optional[dict]:
+        if not proxy_id:
+            return None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM proxies WHERE id = ?", (proxy_id,)
+            ).fetchone()
+        return self._proxy_dict(row) if row else None
+
+    def delete_proxy(self, proxy_id: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE accounts SET proxy_id = NULL WHERE proxy_id = ?", (proxy_id,)
+            )
+            self._conn.execute("DELETE FROM proxies WHERE id = ?", (proxy_id,))
+        self.log("proxy.delete", str(proxy_id))
+
+    def proxy_account_count(self, proxy_id: int) -> int:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT COUNT(*) FROM accounts WHERE proxy_id = ?", (proxy_id,)
+            ).fetchone()[0]
+
+    def assign_proxy(self, account_id: int, proxy_id: Optional[int]) -> dict:
+        """Assign (or clear, with ``None``) an account's proxy.
+
+        Enforces the MAX_ACCOUNTS_PER_PROXY cap: assigning a proxy that already
+        carries the maximum number of *other* accounts is refused.
+
+        Raises:
+            ValueError: If the proxy does not exist or is at capacity.
+        """
+        if proxy_id is not None:
+            if self.get_proxy(proxy_id) is None:
+                raise ValueError(f"Proxy {proxy_id} does not exist.")
+            # Only enforce a per-proxy cap when one is set (>0). 0 = unlimited.
+            if self.MAX_ACCOUNTS_PER_PROXY:
+                with self._lock:
+                    others = self._conn.execute(
+                        "SELECT COUNT(*) FROM accounts WHERE proxy_id = ? AND id != ?",
+                        (proxy_id, account_id),
+                    ).fetchone()[0]
+                if others >= self.MAX_ACCOUNTS_PER_PROXY:
+                    raise ValueError(
+                        f"Proxy already has {others} accounts "
+                        f"(max {self.MAX_ACCOUNTS_PER_PROXY}). Pick another proxy."
+                    )
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE accounts SET proxy_id = :pid WHERE id = :id",
+                {"pid": proxy_id, "id": account_id},
+            )
+        self.log("proxy.assign", f"proxy={proxy_id}", account_id)
+        return self.get_account(account_id)
+
+    def record_proxy_check(self, proxy_id: int, ok: bool, egress_ip: str = "") -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE proxies SET status = ?, last_ip = ?, last_checked = ? WHERE id = ?",
+                ("active" if ok else "down", egress_ip, _now(), proxy_id),
+            )
+
+    def _proxy_dict(self, row: sqlite3.Row) -> dict:
+        d = dict(row)
+        d["accounts_using"] = self.proxy_account_count(d["id"])
+        # Never expose the password in list payloads; keep a masked label.
+        d["masked"] = f"{d['scheme']}://{d['host']}:{d['port']}"
+        if d.get("login"):
+            d["masked"] = f"{d['scheme']}://{d['login']}:***@{d['host']}:{d['port']}"
+        return d
+
+    @staticmethod
+    def proxy_url(proxy: Optional[dict]) -> Optional[str]:
+        """Build a connectable proxy URL (scheme://user:pass@host:port) from a row."""
+        if not proxy:
+            return None
+        from mobile_e2e.core.proxy import ProxyConfig
+        cfg = ProxyConfig(
+            host=proxy["host"], port=int(proxy["port"]),
+            login=proxy.get("login") or None, password=proxy.get("password") or None,
+            scheme=proxy.get("scheme", "http"),
+        )
+        return cfg.url
+
+    # -- threads apps (multi-app) -------------------------------------------
+    # Each Meta app can carry at most MAX_ACCOUNTS_PER_APP accounts, spreading
+    # them so one app restriction doesn't take everyone down. The app id+secret
+    # are only used at authorization time (token exchange); runtime uses the
+    # token alone, so a token issued by any app works regardless of the .env app.
+    MAX_ACCOUNTS_PER_APP = 3
+
+    def add_app(self, app_id: str, app_secret: str, redirect_uri: str = "",
+                label: str = "", max_accounts: int = MAX_ACCOUNTS_PER_APP) -> dict:
+        """Register a Threads app (idempotent on app_id). Returns the stored row."""
+        app_id = (app_id or "").strip()
+        app_secret = (app_secret or "").strip()
+        if not app_id:
+            raise ValueError("App ID is required.")
+        if not app_secret:
+            raise ValueError("App secret is required.")
+        with self._lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO threads_apps (label, app_id, app_secret, redirect_uri,
+                                             max_accounts, created_at)
+                   VALUES (:label, :app_id, :app_secret, :redirect_uri,
+                           :max_accounts, :created_at)
+                   ON CONFLICT(app_id) DO UPDATE SET
+                       app_secret=excluded.app_secret,
+                       redirect_uri=excluded.redirect_uri,
+                       max_accounts=excluded.max_accounts,
+                       label=CASE WHEN excluded.label != '' THEN excluded.label
+                                  ELSE threads_apps.label END""",
+                {"label": label.strip(), "app_id": app_id, "app_secret": app_secret,
+                 "redirect_uri": redirect_uri.strip(),
+                 "max_accounts": int(max_accounts or self.MAX_ACCOUNTS_PER_APP),
+                 "created_at": _now()},
+            )
+            row = self._conn.execute(
+                "SELECT * FROM threads_apps WHERE app_id = ?", (app_id,)).fetchone()
+        return self._app_dict(row)
+
+    def list_apps(self) -> List[dict]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM threads_apps ORDER BY created_at ASC, id ASC").fetchall()
+        return [self._app_dict(r) for r in rows]
+
+    def get_app(self, app_ref: Optional[int]) -> Optional[dict]:
+        if not app_ref:
+            return None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM threads_apps WHERE id = ?", (app_ref,)).fetchone()
+        return self._app_dict(row) if row else None
+
+    def delete_app(self, app_ref: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE accounts SET app_ref = NULL WHERE app_ref = ?", (app_ref,))
+            self._conn.execute("DELETE FROM threads_apps WHERE id = ?", (app_ref,))
+        self.log("app.delete", str(app_ref))
+
+    def app_account_count(self, app_ref: int) -> int:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT COUNT(*) FROM accounts WHERE app_ref = ?", (app_ref,)).fetchone()[0]
+
+    def assign_app(self, account_id: int, app_ref: Optional[int]) -> dict:
+        """Assign (or clear, with ``None``) an account's Threads app.
+
+        Enforces the per-app capacity (``max_accounts``, default 3).
+
+        Raises:
+            ValueError: If the app does not exist or is at capacity.
+        """
+        if app_ref is not None:
+            app = self.get_app(app_ref)
+            if app is None:
+                raise ValueError(f"App {app_ref} does not exist.")
+            with self._lock:
+                others = self._conn.execute(
+                    "SELECT COUNT(*) FROM accounts WHERE app_ref = ? AND id != ?",
+                    (app_ref, account_id)).fetchone()[0]
+            if others >= app["max_accounts"]:
+                raise ValueError(
+                    f"App already has {others} accounts (max {app['max_accounts']}). "
+                    "Pick another app.")
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE accounts SET app_ref = :ref WHERE id = :id",
+                {"ref": app_ref, "id": account_id})
+        self.log("app.assign", f"app={app_ref}", account_id)
+        return self.get_account(account_id)
+
+    def _app_dict(self, row: sqlite3.Row) -> dict:
+        d = dict(row)
+        d["accounts_using"] = self.app_account_count(d["id"])
+        # Never expose the secret in list payloads.
+        secret = d.pop("app_secret", "")
+        d["has_secret"] = bool(secret)
+        d["app_id_masked"] = (d["app_id"][:4] + "…" + d["app_id"][-4:]) if len(d.get("app_id", "")) > 8 else d.get("app_id", "")
+        return d
+
+    def get_app_secret(self, app_ref: int) -> Optional[str]:
+        """Fetch an app's secret (only for the OAuth exchange — never sent to UI)."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT app_secret FROM threads_apps WHERE id = ?", (app_ref,)).fetchone()
+        return row["app_secret"] if row else None
+
+    # -- fingerprints -------------------------------------------------------
+    def ensure_fingerprint(self, account_id: int) -> dict:
+        """Return the account's fingerprint, generating+persisting one ONCE.
+
+        Immutable by design: an existing fingerprint is never regenerated, so an
+        account keeps presenting the same client identity (that consistency is
+        what builds trust). Only an empty fingerprint gets filled.
+        """
+        from mobile_e2e.core import fingerprint as _fp
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT fingerprint FROM accounts WHERE id = ?", (account_id,)
+            ).fetchone()
+        existing = _fp.loads(row["fingerprint"] if row else "")
+        if existing:
+            return existing
+        fp = _fp.generate(seed=account_id)
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE accounts SET fingerprint = ? WHERE id = ?",
+                (_fp.dumps(fp), account_id),
+            )
+        self.log("account.fingerprint", fp.get("device_model", ""), account_id)
+        return fp
+
+    def transport_for(self, credentials_file: str) -> tuple:
+        """Resolve (proxy_url, fingerprint_headers, require_proxy) for a creds file.
+
+        Used by the Threads client to route every request through the right
+        account's proxy + fingerprint. The mapping is credentials_file → account.
+
+        - If the account has a proxy assigned → it is mandatory (fail-closed on
+          that proxy being down).
+        - If no proxy is assigned but the global ``proxy_enforce_all`` setting is
+          on → require_proxy is True with no url, so the client refuses to send
+          over the direct IP.
+        """
+        from mobile_e2e.core import fingerprint as _fp
+        acc = None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM accounts WHERE credentials_file = ? LIMIT 1",
+                (credentials_file,),
+            ).fetchone()
+            if row:
+                acc = dict(row)
+        if not acc:
+            enforce = self.get_setting("proxy_enforce_all", "0") == "1"
+            return (None, {}, enforce)
+        proxy = self.get_proxy(acc.get("proxy_id")) if acc.get("proxy_id") else None
+        url = self.proxy_url(proxy)
+        # Ensure a fingerprint exists (generate once) so headers are always set.
+        fp = _fp.loads(acc.get("fingerprint") or "")
+        if not fp:
+            fp = self.ensure_fingerprint(acc["id"])
+        headers = _fp.headers(fp)
+        enforce = self.get_setting("proxy_enforce_all", "0") == "1"
+        require = bool(url) or enforce
+        return (url, headers, require)
 
     # -- tasks --------------------------------------------------------------
     def add_task(self, **fields) -> dict:

@@ -11,5 +11,9 @@ Flask>=3.0
 tzdata
 # Threads official API (used only when credentials are configured)
 pythreads
+# Per-account proxy transport (HTTP + SOCKS5) at the aiohttp connector level, so
+# all Threads traffic is fail-closed through the account's proxy. 0.8.x matches
+# aiohttp 3.9 (the version pythreads pins); newer aiohttp-socks pulls aiohttp 3.10+.
+aiohttp-socks>=0.8,<0.9
 # testing
 pytest>=8.0

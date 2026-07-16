@@ -49,6 +49,42 @@ def _check_env() -> tuple[str, str, str]:
     return redirect, cert, key
 
 
+def _connect_proxy_url() -> str | None:
+    """Build a proxy URL from E2E_CONNECT_PROXY for the OAuth exchange, or None."""
+    raw = os.getenv("E2E_CONNECT_PROXY", "").strip()
+    if not raw:
+        return None
+    from mobile_e2e.core.proxy import ProxyConfig
+    scheme = os.getenv("E2E_CONNECT_PROXY_SCHEME", "http").strip().lower()
+    return ProxyConfig.from_string(raw, scheme=scheme).url
+
+
+def _connect_identity(output_file: str) -> tuple[str | None, str | None]:
+    """Resolve (proxy_url, user_agent) to use for authorizing this account.
+
+    Priority: the dashboard account whose ``credentials_file`` == ``output_file``
+    (so the account's assigned proxy + frozen fingerprint are used automatically);
+    the ``E2E_CONNECT_PROXY`` env var overrides the proxy if set.
+    """
+    env_proxy = _connect_proxy_url()
+    proxy_url, user_agent = env_proxy, None
+    try:
+        from mobile_e2e.web.store import Store
+        db_path = os.getenv("E2E_WEB_DB") or os.path.join(
+            os.path.dirname(__file__), "data", "dashboard.db")
+        if os.path.isfile(db_path):
+            db = Store(db_path)
+            for a in db.list_accounts():
+                if a.get("credentials_file") == output_file:
+                    if not proxy_url and a.get("proxy"):
+                        proxy_url = Store.proxy_url(a["proxy"])
+                    user_agent = (a.get("fingerprint") or {}).get("user_agent")
+                    break
+    except Exception:  # noqa: BLE001 - fall back to env-only proxy, no UA
+        pass
+    return proxy_url, user_agent
+
+
 def main() -> None:
     redirect, cert, key = _check_env()
 
@@ -121,13 +157,29 @@ def main() -> None:
     if not callback_url:
         raise SystemExit("No callback captured — authorization was not completed.")
 
-    print(">>> Exchanging the code for a long-lived token...")
-    credentials = Threads.complete_authorization(callback_url, state, config=config)
-
-    # Output file: CLI arg wins (for a second account), else env, else default.
+    # Output file (computed up front so we can bind the account's proxy + UA):
+    # CLI arg wins (for a second account), else env, else default.
     # e.g. `python -m mobile_e2e.web.threads_connect threads_credentials_2.json`
     output = (sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-")
               else os.getenv("THREADS_CREDENTIALS_FILE", DEFAULT_OUTPUT))
+
+    print(">>> Exchanging the code for a long-lived token...")
+    # Route the OAuth token exchange (blocking `requests` inside pythreads) through
+    # the SAME identity the runtime session uses: the account's proxy IP and its
+    # frozen fingerprint User-Agent. So the very first authorization call already
+    # matches every later request — never this machine's real IP or a stray UA.
+    # The account is matched by credentials_file; E2E_CONNECT_PROXY overrides the
+    # proxy. Fail-closed when E2E_CONNECT_PROXY_REQUIRED=1.
+    from mobile_e2e.core.http_session import requests_identity
+    proxy_url, user_agent = _connect_identity(output)
+    if proxy_url:
+        print(f">>> Authorizing through proxy: {proxy_url.split('@')[-1]}")
+    if user_agent:
+        print(f">>> Using account fingerprint UA: {user_agent[:48]}…")
+    with requests_identity(proxy_url, user_agent,
+                           require_proxy=os.getenv("E2E_CONNECT_PROXY_REQUIRED") == "1"):
+        credentials = Threads.complete_authorization(callback_url, state, config=config)
+
     with open(output, "w", encoding="utf-8") as f:
         f.write(credentials.to_json())
     print(f"\n[OK] Credentials saved to {output}")

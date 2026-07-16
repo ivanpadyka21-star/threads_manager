@@ -313,9 +313,13 @@ const AVATAR_GRAD = [
 ];
 function initials(name) { return (name || "?").trim().slice(0, 2).toUpperCase(); }
 
+let PROXIES = [];
+let APPS = [];
 async function loadAccounts() {
   const wrap = $("#accounts-table");
   showSkeleton(wrap, 3, "card");
+  await loadProxies();
+  await loadApps();
   const [rows, analytics] = await Promise.all([api("/api/accounts"), api("/api/analytics").catch(() => ({ accounts: [] }))]);
   if (!rows.length) { wrap.innerHTML = ""; wrap.append(emptyState(t("empty.accounts"), t("empty.accounts.hint"), "◉")); return; }
   const anaById = Object.fromEntries((analytics.accounts || []).map(a => [a.id, a]));
@@ -344,10 +348,42 @@ async function loadAccounts() {
     const sc = el("span", { class: "score-chip", text: a.score == null ? "—" : a.score + "%" });
     sc.style.color = scoreColor(a.score); meta.append(sc);
     card.append(meta);
-    // footer: tone + proxy + delete
+    // proxy selector + fingerprint chip
+    const idn = el("div", { class: "acct-idn" });
+    const sel = el("select", { class: "acct-proxy-sel", onchange: async () => {
+      try {
+        await jpost(`/api/accounts/${r.id}/proxy`, { proxy_id: sel.value || null });
+        toast(t("proxy.assigned") || "Proxy assigned", "success", 1500);
+        loadProxies();
+      } catch (err) { toast(String(err), "error", 5000); loadAccounts(); }
+    }});
+    sel.append(el("option", { value: "", text: t("proxy.none") || "— no proxy —" }));
+    (PROXIES || []).forEach(p => {
+      const o = el("option", { value: String(p.id),
+        text: `${p.host}:${p.port} (${p.accounts_using})${p.status === "down" ? " ⚠" : ""}` });
+      if (String(p.id) === String(r.proxy_id)) o.selected = true;
+      sel.append(o);
+    });
+    idn.append(sel);
+    idn.append(el("button", { class: "mini paste-proxy", title: "Вставить свой прокси",
+      text: "＋", onclick: () => pasteProxyFor(r) }));
+    const fp = r.fingerprint || {};
+    if (fp.device_model) idn.append(el("span", { class: "acct-fp", title: fp.user_agent || "",
+      text: "📱 " + fp.device_model }));
+    // app (multi-app) — read-only chip, only when the account was connected
+    // under a registered app. The token itself carries the app, so this is just
+    // informational; the app is chosen at connect time, not pinned here.
+    const appInfo = r.app || {};
+    if (appInfo.label || appInfo.app_id_masked) {
+      idn.append(el("span", { class: "acct-app-chip", title: "Threads-приложение",
+        text: "🧩 " + (appInfo.label || appInfo.app_id_masked) }));
+    }
+    card.append(idn);
+    // footer: tone + connect + delete
     const foot = el("div", { class: "acct-foot" });
     foot.append(el("span", { class: "acct-tone", text: r.tone || "—" }));
-    foot.append(el("span", { class: "acct-proxy " + (r.proxy_string ? "on" : ""), text: r.proxy_string ? "proxy" : "" }));
+    foot.append(el("button", { class: "mini", text: t("connect.btn") || "🔗 Подключить",
+      onclick: () => connectAccount(r) }));
     foot.append(el("button", { class: "mini danger", text: t("btn.delete"), onclick: async () => {
       if (!await confirmDialog(`${t("confirm.delete")} "${r.name}"?`)) return;
       await api("/api/accounts/" + r.id, { method: "DELETE" });
@@ -387,9 +423,297 @@ function acctHealthBadge(h) {
 $("#account-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target).entries());
-  try { await jpost("/api/accounts", data); e.target.reset(); toast(t("msg.added"), "success"); loadAccounts(); }
-  catch (err) { toast(String(err), "error"); }
+  try {
+    const acc = await jpost("/api/accounts", data);
+    e.target.reset();
+    if (acc && acc.proxy_warning) toast("Аккаунт создан, но прокси не распознан: " + acc.proxy_warning, "error", 6000);
+    else if (acc && acc.proxy) toast(`Аккаунт добавлен, прокси ${acc.proxy.host}:${acc.proxy.port} назначен`, "success");
+    else toast(t("msg.added"), "success");
+    loadAccounts();
+  } catch (err) { toast(String(err), "error"); }
 });
+
+// --- proxies ---------------------------------------------------------------
+async function loadProxies() {
+  try { PROXIES = await api("/api/proxies"); } catch { PROXIES = []; }
+  const wrap = $("#proxies-table");
+  if (!wrap) return;
+  try {
+    const cfg = await api("/api/settings/proxy-enforce");
+    const en = $("#proxy-enforce"); if (en) en.checked = !!cfg.proxy_enforce_all;
+  } catch {}
+  if (!PROXIES.length) { wrap.innerHTML = ""; wrap.append(emptyState(t("proxy.empty") || "Нет прокси", t("proxy.empty.hint") || "Добавьте прокси выше", "🛡️")); return; }
+  const tbl = el("table", { class: "grid-table" });
+  const thead = el("tr", {},
+    el("th", { text: t("proxy.col.proxy") || "Прокси" }),
+    el("th", { text: t("proxy.col.type") || "Тип" }),
+    el("th", { text: t("proxy.col.used") || "Аккаунтов" }),
+    el("th", { text: t("proxy.col.status") || "Статус / egress IP" }),
+    el("th", { text: "" }));
+  tbl.append(thead);
+  PROXIES.forEach(p => {
+    const statusTxt = p.status === "down" ? "⚠ down"
+      : (p.last_ip ? `🟢 ${p.last_ip}` : (p.status === "active" ? "—" : p.status));
+    const checkBtn = el("button", { class: "mini", text: t("proxy.check") || "Проверить", onclick: async () => {
+      checkBtn.disabled = true; checkBtn.textContent = "…";
+      try {
+        const r = await jpost(`/api/proxies/${p.id}/check`, {});
+        toast(r.ok ? `🟢 ${p.host} → ${r.ip}` : `⚠ ${p.host}: ${r.error}`, r.ok ? "success" : "error", 5000);
+      } catch (err) { toast(String(err), "error", 5000); }
+      loadProxies();
+    }});
+    const delBtn = el("button", { class: "mini danger", text: t("btn.delete"), onclick: async () => {
+      if (!await confirmDialog(`${t("confirm.delete")} ${p.host}:${p.port}?`)) return;
+      await api(`/api/proxies/${p.id}`, { method: "DELETE" });
+      toast(t("msg.deleted"), "success"); loadAccounts();
+    }});
+    tbl.append(el("tr", {},
+      el("td", { text: `${p.host}:${p.port}` }),
+      el("td", { text: (p.scheme || "http").toUpperCase() }),
+      el("td", { text: `${p.accounts_using}` }),
+      el("td", { class: "proxy-st " + (p.status === "down" ? "down" : "ok"), text: statusTxt }),
+      el("td", {}, checkBtn, delBtn)));
+  });
+  wrap.innerHTML = ""; wrap.append(tbl);
+}
+$("#proxy-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const out = $("#proxy-msg"); out.textContent = "…";
+  try {
+    const r = await jpost("/api/proxies", data);
+    const errN = (r.errors || []).length;
+    out.textContent = `+${(r.added || []).length}` + (errN ? `, ${errN} ошибок` : "");
+    toast(`Добавлено прокси: ${(r.added || []).length}`, "success");
+    e.target.reset(); loadAccounts();
+  } catch (err) { out.textContent = ""; toast(String(err), "error", 5000); }
+});
+$("#proxy-autoassign")?.addEventListener("click", async () => {
+  try { const r = await jpost("/api/proxies/auto-assign", {}); toast(`Назначено: ${(r.assigned || []).length}`, "success"); loadAccounts(); }
+  catch (err) { toast(String(err), "error", 5000); }
+});
+$("#proxy-enforce")?.addEventListener("change", async (e) => {
+  try { await jpost("/api/settings/proxy-enforce", { enabled: e.target.checked });
+    toast(e.target.checked ? "Fail-closed включён" : "Fail-closed выключен", "success", 2000); }
+  catch (err) { toast(String(err), "error", 5000); e.target.checked = !e.target.checked; }
+});
+
+// --- paste a proxy directly onto an account --------------------------------
+async function pasteProxyFor(r) {
+  const box = el("div", { class: "connect-flow" });
+  box.append(el("p", { class: "connect-steps",
+    text: "Вставь прокси для " + (r.name || "аккаунта") + " (ip:port или ip:port:login:pass):" }));
+  const inp = el("input", { class: "connect-app-sel", placeholder: "1.2.3.4:8080:login:pass" });
+  const schemeSel = el("select", { class: "connect-app-sel" });
+  schemeSel.append(el("option", { value: "http", text: "HTTP" }));
+  schemeSel.append(el("option", { value: "socks5", text: "SOCKS5" }));
+  box.append(inp, schemeSel);
+  // let Enter submit
+  const done = await modal({ title: "＋ Вставить прокси", body: box, actions: [
+    { label: t("btn.cancel") || "Отмена", value: false },
+    { label: "Назначить", value: true },
+  ]});
+  const proxy_string = inp.value.trim();
+  if (!done || !proxy_string) return;
+  try {
+    const acc = await jpost(`/api/accounts/${r.id}/proxy`, { proxy_string, scheme: schemeSel.value });
+    toast(`Прокси ${(acc.proxy || {}).host || ""} назначен`, "success", 2500);
+    loadAccounts();
+  } catch (err) { toast(String(err), "error", 6000); }
+}
+
+// --- threads apps (multi-app) ----------------------------------------------
+async function loadApps() {
+  try { APPS = await api("/api/apps"); } catch { APPS = []; }
+  const wrap = $("#apps-table");
+  if (!wrap) return;
+  if (!APPS.length) { wrap.innerHTML = ""; wrap.append(emptyState("Нет приложений", "Добавьте приложение выше", "📱")); return; }
+  const tbl = el("table", { class: "grid-table" });
+  tbl.append(el("tr", {},
+    el("th", { text: "Приложение" }), el("th", { text: "App ID" }),
+    el("th", { text: "Аккаунтов" }), el("th", { text: "Redirect" }), el("th", { text: "" })));
+  APPS.forEach(ap => {
+    const del = el("button", { class: "mini danger", text: t("btn.delete"), onclick: async () => {
+      if (!await confirmDialog(`Удалить приложение ${ap.label || ap.app_id_masked}? Аккаунты отвяжутся (токены продолжат работать).`)) return;
+      await api(`/api/apps/${ap.id}`, { method: "DELETE" });
+      toast(t("msg.deleted"), "success"); loadAccounts();
+    }});
+    tbl.append(el("tr", {},
+      el("td", { text: ap.label || "—" }),
+      el("td", { text: ap.app_id_masked }),
+      el("td", { text: `${ap.accounts_using}/${ap.max_accounts}` }),
+      el("td", { text: ap.redirect_uri || "(.env)" }),
+      el("td", {}, del)));
+  });
+  wrap.innerHTML = ""; wrap.append(tbl);
+}
+$("#app-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const out = $("#app-msg"); out.textContent = "…";
+  try {
+    const ap = await jpost("/api/apps", data);
+    out.textContent = ""; toast(`Приложение добавлено: ${ap.label || ap.app_id_masked}`, "success");
+    e.target.reset(); const rr = e.target.querySelector("[name=redirect_uri]"); if (rr) rr.value = "https://localhost:8443/callback";
+    loadAccounts();
+  } catch (err) { out.textContent = ""; toast(String(err), "error", 6000); }
+});
+
+// --- connect account (hands-off OAuth) -------------------------------------
+async function connectAccount(r) {
+  const body = el("div", { class: "connect-flow" });
+  let timer = null, last = null;
+
+  // Step 1: pick which Threads app authorizes this account (the token will be
+  // issued by it). Old accounts don't need this; new ones pick the right app.
+  const pick = el("div", { class: "connect-pick" });
+  pick.append(el("p", { class: "connect-steps", text: "Под каким приложением Threads авторизовать этот аккаунт?" }));
+  const appSel = el("select", { class: "connect-app-sel" });
+  appSel.append(el("option", { value: "", text: ".env default (старое приложение)" }));
+  (APPS || []).forEach(ap => {
+    const full = ap.accounts_using >= ap.max_accounts;
+    const o = el("option", { value: String(ap.id),
+      text: `${ap.label || ap.app_id_masked} (${ap.accounts_using}/${ap.max_accounts})` + (full ? " — полное" : "") });
+    if (full) o.disabled = true;
+    appSel.append(o);
+  });
+  pick.append(appSel);
+  const startBtn = el("button", { class: "mini", text: "Получить ссылку →" });
+  pick.append(startBtn);
+  body.append(pick);
+
+  startBtn.onclick = async () => {
+    startBtn.disabled = true; startBtn.textContent = "…";
+    let flow;
+    try { flow = await jpost(`/api/accounts/${r.id}/connect/start`, { app_ref: appSel.value || null }); }
+    catch (err) { toast(String(err), "error", 7000); startBtn.disabled = false; startBtn.textContent = "Получить ссылку →"; return; }
+    last = flow;
+    // Two parts: the status view (re-rendered each poll) + a persistent manual
+    // paste-URL block (so polling doesn't wipe what the user typed).
+    body.innerHTML = "";
+    const viewEl = el("div");
+    const manualEl = el("div", { class: "connect-manual" });
+    buildManualComplete(manualEl);
+    body.append(viewEl, manualEl);
+    connectView(viewEl, flow, flow);
+    startConnectBannerPolling();  // persistent bar so completion survives closing this modal
+    timer = setInterval(async () => {
+      let st; try { st = await api("/api/connect/status"); } catch { return; }
+      last = st;
+      connectView(viewEl, flow, st);
+      manualEl.style.display = (st.status === "awaiting_login") ? "" : "none";
+      if (["done", "error", "timeout", "cancelled", "idle"].includes(st.status)) {
+        clearInterval(timer); timer = null;
+        if (st.status === "done") { toast(`✅ Подключено${st.username ? " @" + st.username : ""}`, "success", 4000); loadAccounts(); }
+      }
+    }, 2000);
+  };
+
+  await modal({ title: t("connect.title") || "🔗 Подключение аккаунта", body,
+    actions: [{ label: t("btn.close") || "Закрыть", value: false }] });
+  if (timer) clearInterval(timer);
+  // NOTE: do NOT cancel on close — the flow lives on the server so you can leave
+  // to the antidetect browser and finish via the top bar. The bar keeps polling.
+  startConnectBannerPolling();
+  loadAccounts();
+}
+
+// A persistent top bar for finishing an in-progress connect (paste the callback
+// URL). It survives closing the modal AND refreshing the page, because the flow
+// lives on the server. Essential for antidetect browsers that can't reach
+// localhost through the proxy.
+let _bannerTimer = null, _lastBannerStatus = null;
+function startConnectBannerPolling() {
+  pollConnectBanner();
+  if (_bannerTimer) return;
+  _bannerTimer = setInterval(pollConnectBanner, 4000);
+}
+async function pollConnectBanner() {
+  let st; try { st = await api("/api/connect/status"); } catch { return; }
+  renderConnectBanner(st);
+}
+function renderConnectBanner(st) {
+  const status = (st && st.status) || "idle";
+  if (_lastBannerStatus === "awaiting_login" || _lastBannerStatus === "exchanging") {
+    if (status === "done") { toast(`✅ Подключено${st.username ? " @" + st.username : ""}`, "success", 6000); loadAccounts(); }
+    else if (status === "error") toast("Ошибка подключения: " + (st.error || ""), "error", 10000);
+  }
+  _lastBannerStatus = status;
+  let bar = document.getElementById("connect-banner");
+  if (status !== "awaiting_login" && status !== "exchanging") {
+    if (bar) bar.remove();
+    if (_bannerTimer) { clearInterval(_bannerTimer); _bannerTimer = null; }
+    return;
+  }
+  if (!bar) { bar = el("div", { id: "connect-banner" }); document.body.appendChild(bar); }
+  const key = status + ":" + (st.flow_id || "");
+  if (bar.dataset.key === key) return;  // don't rebuild (keeps the typed URL intact)
+  bar.dataset.key = key;
+  bar.innerHTML = "";
+  const who = `🔗 ${st.credentials_file || "аккаунт"} · app: ${st.app_label || ".env"}`;
+  if (status === "exchanging") {
+    bar.append(el("div", { class: "cb-title", text: who + " — 🔄 обмениваю код на токен через прокси…" }));
+    return;
+  }
+  bar.append(el("div", { class: "cb-title", text: who + " — вставь URL из адресной строки антидетекта (…/callback?code=…):" }));
+  const inp = el("input", { class: "cb-input", placeholder: "https://localhost:8443/callback?code=..." });
+  const done = el("button", { class: "mini", text: "Завершить →", onclick: async () => {
+    const url = inp.value.trim(); if (!url) { toast("Вставь URL с code=…", "error", 3000); return; }
+    done.disabled = true; done.textContent = "…";
+    try { await jpost("/api/connect/complete", { callback_url: url }); }
+    catch (err) { toast(String(err), "error", 10000); done.disabled = false; done.textContent = "Завершить →"; }
+  }});
+  const cancel = el("button", { class: "mini danger", text: "Отмена", onclick: async () => {
+    await jpost("/api/connect/cancel", {}).catch(() => {}); renderConnectBanner({ status: "cancelled" });
+  }});
+  bar.append(inp, done, cancel);
+}
+function buildManualComplete(m) {
+  m.append(el("div", { class: "connect-manual-hint",
+    text: "⚠ Антидетект не смог открыть localhost? Это норма (localhost идёт через прокси). Скопируй ПОЛНЫЙ URL из адресной строки браузера (там где …/callback?code=…) и вставь сюда:" }));
+  const inp = el("input", { class: "connect-app-sel", placeholder: "https://localhost:8443/callback?code=..." });
+  const btn = el("button", { class: "mini", text: "Завершить вручную →", onclick: async () => {
+    const url = inp.value.trim();
+    if (!url) { toast("Вставь URL с code=…", "error", 3000); return; }
+    btn.disabled = true; btn.textContent = "…";
+    try { await jpost("/api/connect/complete", { callback_url: url }); toast("Обмениваю код на токен через прокси…", "info", 2500); }
+    catch (err) { toast(String(err), "error", 8000); }
+    btn.disabled = false; btn.textContent = "Завершить вручную →";
+  }});
+  m.append(inp, btn);
+}
+function connectView(container, flow, st) {
+  container.innerHTML = "";
+  const status = (st && st.status) || "awaiting_login";
+  if (!flow.has_proxy) {
+    container.append(el("div", { class: "connect-warn",
+      text: "⚠ У аккаунта не назначен прокси — вход пойдёт без прокси. Лучше сначала назначь прокси, потом подключай." }));
+  } else {
+    container.append(el("div", { class: "hint", text: "Прокси аккаунта: " + (flow.proxy_label || "") }));
+  }
+  container.append(el("div", { class: "hint", text: "Приложение: " + (flow.app_label || ".env default") }));
+  container.append(el("p", { class: "connect-steps",
+    text: "1) Скопируй ссылку ниже.  2) Открой её в антидетект-браузере с ЭТИМ прокси.  3) Войди в аккаунт и нажми «Разрешить»." }));
+  const urlBox = el("textarea", { class: "connect-url", readonly: "readonly", rows: "3" });
+  urlBox.value = flow.auth_url;
+  container.append(urlBox);
+  container.append(el("button", { class: "mini", text: "📋 Скопировать ссылку", onclick: async () => {
+    try { await navigator.clipboard.writeText(flow.auth_url); toast("Ссылка скопирована", "success", 1500); }
+    catch { urlBox.select(); document.execCommand("copy"); toast("Ссылка скопирована", "success", 1500); }
+  }}));
+  container.append(el("div", { class: "hint", text: "Файл токена: " + (flow.credentials_file || "") }));
+  const map = {
+    awaiting_login: ["⏳ Жду, пока войдёшь и нажмёшь «Разрешить» в браузере…", "muted"],
+    exchanging: ["🔄 Получаю токен через прокси аккаунта…", "muted"],
+    done: ["✅ Готово! Аккаунт подключён" + (st && st.username ? " — @" + st.username : ""), "ok"],
+    error: ["⚠ Ошибка: " + ((st && st.error) || ""), "err"],
+    timeout: ["⏱ Время вышло. Закрой окно и попробуй снова.", "err"],
+    cancelled: ["Отменено.", "muted"],
+    idle: ["—", "muted"],
+  };
+  const [txt, cls] = map[status] || ["…", "muted"];
+  container.append(el("div", { class: "connect-status " + cls, text: txt }));
+}
 
 // --- tasks -----------------------------------------------------------------
 async function loadAccountOptions() {
@@ -2465,3 +2789,6 @@ $("#workflow-form").addEventListener("submit", async (e) => {
 
 // --- boot ------------------------------------------------------------------
 showTab("dashboard");
+
+// Show the connect bar on load if a flow is already in progress (survives refresh).
+try { startConnectBannerPolling(); } catch (e) {}

@@ -75,6 +75,15 @@ def create_app(
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     db = store or Store(os.getenv("E2E_WEB_DB", _DEFAULT_DB))
 
+    # Route EVERY Threads API request through the calling account's own proxy +
+    # fingerprint. The resolver maps a credentials_file -> (proxy_url, headers,
+    # require_proxy); see Store.transport_for and threads_client._open_api.
+    threads_client.set_transport_resolver(db.transport_for)
+
+    # One-at-a-time background OAuth connector for the "Connect account" button.
+    from mobile_e2e.web.connect_service import ConnectManager, ConnectError
+    connect_manager = ConnectManager(db)
+
     def _record_run(job: Job) -> None:
         ok = job.status == "done" and (job.result or {}).get("ok")
         if ok:
@@ -239,10 +248,27 @@ def create_app(
     @app.post("/api/accounts")
     def create_account():
         data = request.get_json(silent=True) or {}
+        # A proxy typed into the add form must be REGISTERED + assigned (proxy_id),
+        # not just stored in the legacy proxy_string column (which the transport
+        # layer ignores). Handle it separately so the account actually egresses
+        # through it.
+        proxy_string = (data.pop("proxy_string", "") or "").strip()
+        proxy_scheme = (data.pop("proxy_scheme", "http") or "http").strip().lower()
         try:
             account = db.add_account(**data)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        if proxy_string:
+            try:
+                from mobile_e2e.core.proxy import ProxyConfig
+                cfg = ProxyConfig.from_string(proxy_string, scheme=proxy_scheme)
+                proxy = db.add_proxy(proxy_scheme, cfg.host, cfg.port,
+                                     cfg.login or "", cfg.password or "")
+                db.assign_proxy(account["id"], proxy["id"])
+                account = db.get_account(account["id"])
+            except (ValueError, ProxyParseError) as exc:
+                # Account is created; surface the proxy problem without failing.
+                return jsonify({**account, "proxy_warning": str(exc)}), 201
         return jsonify(account), 201
 
     @app.patch("/api/accounts/<int:account_id>")
@@ -261,8 +287,9 @@ def create_app(
     @app.post("/api/accounts/health")
     def refresh_account_health():
         """Probe every account's /me and store alive/blocked/error per account.
-        Note: these calls go out from THIS machine's IP — run on demand, not on a
-        loop, to avoid correlating all accounts to one address."""
+        Each probe now leaves through that account's own proxy (see
+        threads_client transport), so a broken proxy surfaces as 'error' instead
+        of silently falling back to this machine's IP."""
         results = []
         for a in db.list_accounts():
             creds = a.get("credentials_file") or threads_client.DEFAULT_CREDENTIALS_FILE
@@ -270,6 +297,202 @@ def create_app(
             db.set_account_health(a["id"], h["status"], h.get("username", ""))
             results.append({"id": a["id"], "handle": a["handle"], "status": h["status"]})
         return jsonify({"results": results})
+
+    # -- proxies & fingerprints --------------------------------------------
+    @app.get("/api/proxies")
+    def list_proxies():
+        return jsonify(db.list_proxies())
+
+    @app.post("/api/proxies")
+    def add_proxies():
+        """Add one or many proxies.
+
+        Accepts either a single structured proxy, or ``{"bulk": "<text>"}`` with
+        one ``IP:Port`` / ``IP:Port:Login:Password`` per line (scheme defaults to
+        the ``scheme`` field, http|socks5).
+        """
+        data = request.get_json(silent=True) or {}
+        scheme = (data.get("scheme") or "http").strip().lower()
+        added, errors = [], []
+        if data.get("bulk"):
+            from mobile_e2e.core.proxy import ProxyConfig
+            for i, line in enumerate((data["bulk"] or "").splitlines(), 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    cfg = ProxyConfig.from_string(line, scheme=scheme)
+                    added.append(db.add_proxy(scheme, cfg.host, cfg.port,
+                                              cfg.login or "", cfg.password or ""))
+                except (ValueError, ProxyParseError) as exc:
+                    errors.append({"line": i, "value": line, "error": str(exc)})
+        else:
+            try:
+                added.append(db.add_proxy(
+                    scheme, data.get("host", ""), int(data.get("port") or 0),
+                    data.get("login", ""), data.get("password", ""),
+                    data.get("label", "")))
+            except (ValueError, ProxyParseError) as exc:
+                return jsonify({"error": str(exc)}), 400
+        return jsonify({"added": added, "errors": errors}), 201
+
+    @app.delete("/api/proxies/<int:proxy_id>")
+    def delete_proxy(proxy_id: int):
+        db.delete_proxy(proxy_id)
+        return jsonify({"deleted": proxy_id})
+
+    @app.post("/api/proxies/<int:proxy_id>/check")
+    def check_proxy(proxy_id: int):
+        """Live-test a proxy: fetch our egress IP through it (fail-closed)."""
+        from mobile_e2e.core import http_session
+        proxy = db.get_proxy(proxy_id)
+        if not proxy:
+            return jsonify({"error": "proxy not found"}), 404
+        res = http_session.probe(db.proxy_url(proxy))
+        db.record_proxy_check(proxy_id, bool(res["ok"]), str(res.get("ip", "")))
+        return jsonify(res)
+
+    @app.post("/api/accounts/<int:account_id>/proxy")
+    def assign_account_proxy(account_id: int):
+        """Assign an account's proxy. Accepts EITHER an existing {proxy_id}, or a
+        pasted {proxy_string} (+ optional scheme http|socks5) which is registered
+        on the fly and then assigned. Enforces max 2 accounts/proxy."""
+        data = request.get_json(silent=True) or {}
+        proxy_string = (data.get("proxy_string") or "").strip()
+        try:
+            if proxy_string:
+                from mobile_e2e.core.proxy import ProxyConfig
+                scheme = (data.get("scheme") or "http").strip().lower()
+                cfg = ProxyConfig.from_string(proxy_string, scheme=scheme)
+                proxy = db.add_proxy(scheme, cfg.host, cfg.port,
+                                     cfg.login or "", cfg.password or "")
+                account = db.assign_proxy(account_id, proxy["id"])
+            else:
+                proxy_id = data.get("proxy_id")
+                proxy_id = int(proxy_id) if proxy_id not in (None, "", 0, "0") else None
+                account = db.assign_proxy(account_id, proxy_id)
+        except (ValueError, ProxyParseError) as exc:
+            return jsonify({"error": str(exc)}), 400
+        if account is None:
+            return jsonify({"error": "account not found"}), 404
+        return jsonify(account)
+
+    @app.post("/api/accounts/<int:account_id>/fingerprint")
+    def account_fingerprint(account_id: int):
+        """Ensure (generate once, immutable) and return an account's fingerprint."""
+        if db.get_account(account_id) is None:
+            return jsonify({"error": "account not found"}), 404
+        return jsonify(db.ensure_fingerprint(account_id))
+
+    # -- connect (OAuth) ----------------------------------------------------
+    @app.post("/api/accounts/<int:account_id>/connect/start")
+    def connect_start(account_id: int):
+        """Begin the hands-off OAuth flow: returns the auth URL to open in the
+        antidetect browser. Everything else (filename, proxy, fingerprint, token
+        save) is automatic; the user only logs in + approves in Meta. Optionally
+        pass {"app_ref": <id>} to authorize under a specific Threads app."""
+        data = request.get_json(silent=True) or {}
+        app_ref = data.get("app_ref")
+        app_ref = int(app_ref) if app_ref not in (None, "", 0, "0") else None
+        try:
+            return jsonify(connect_manager.start(account_id, app_ref))
+        except ConnectError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    # -- threads apps (multi-app) -------------------------------------------
+    @app.get("/api/apps")
+    def list_apps():
+        return jsonify(db.list_apps())
+
+    @app.post("/api/apps")
+    def add_app():
+        data = request.get_json(silent=True) or {}
+        try:
+            app_row = db.add_app(
+                app_id=data.get("app_id", ""), app_secret=data.get("app_secret", ""),
+                redirect_uri=data.get("redirect_uri", ""), label=data.get("label", ""),
+                max_accounts=int(data.get("max_accounts") or db.MAX_ACCOUNTS_PER_APP))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(app_row), 201
+
+    @app.delete("/api/apps/<int:app_ref>")
+    def delete_app(app_ref: int):
+        db.delete_app(app_ref)
+        return jsonify({"deleted": app_ref})
+
+    @app.post("/api/accounts/<int:account_id>/app")
+    def assign_account_app(account_id: int):
+        data = request.get_json(silent=True) or {}
+        app_ref = data.get("app_ref")
+        app_ref = int(app_ref) if app_ref not in (None, "", 0, "0") else None
+        try:
+            account = db.assign_app(account_id, app_ref)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if account is None:
+            return jsonify({"error": "account not found"}), 404
+        return jsonify(account)
+
+    @app.get("/api/connect/status")
+    def connect_status():
+        st = connect_manager.status()
+        return jsonify(st or {"status": "idle"})
+
+    @app.post("/api/connect/cancel")
+    def connect_cancel():
+        connect_manager.cancel()
+        return jsonify({"cancelled": True})
+
+    @app.post("/api/connect/complete")
+    def connect_complete():
+        """Finish a connect by pasting the redirect URL (antidetect fallback:
+        the browser can't reach localhost through the proxy)."""
+        data = request.get_json(silent=True) or {}
+        try:
+            return jsonify(connect_manager.complete_manually(data.get("callback_url", "")))
+        except ConnectError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.post("/api/proxies/auto-assign")
+    def auto_assign_proxies():
+        """Spread accounts with no proxy across proxies, evenly (round-robin),
+        starting from the least-loaded proxies. Respects the per-proxy cap when
+        one is set (MAX_ACCOUNTS_PER_PROXY > 0), otherwise unlimited."""
+        assigned = []
+        proxies = db.list_proxies()
+        if not proxies:
+            return jsonify({"assigned": []})
+        cap = db.MAX_ACCOUNTS_PER_PROXY  # 0 = unlimited
+        # live load per proxy, seeded from current usage
+        load = {p["id"]: p["accounts_using"] for p in proxies}
+        for a in db.list_accounts():
+            if a.get("proxy_id"):
+                continue
+            # pick the least-loaded proxy still under the cap (if any)
+            candidates = [pid for pid in load if not cap or load[pid] < cap]
+            if not candidates:
+                break
+            pid = min(candidates, key=lambda x: load[x])
+            try:
+                db.assign_proxy(a["id"], pid)
+                load[pid] += 1
+                assigned.append({"account_id": a["id"], "proxy_id": pid})
+            except ValueError:
+                load[pid] = (cap or 10**9)  # take it out of rotation
+        return jsonify({"assigned": assigned})
+
+    @app.post("/api/settings/proxy-enforce")
+    def set_proxy_enforce():
+        """Toggle the global fail-closed rule: block accounts with no proxy."""
+        data = request.get_json(silent=True) or {}
+        val = "1" if data.get("enabled") else "0"
+        db.set_setting("proxy_enforce_all", val)
+        return jsonify({"proxy_enforce_all": val == "1"})
+
+    @app.get("/api/settings/proxy-enforce")
+    def get_proxy_enforce():
+        return jsonify({"proxy_enforce_all": db.get_setting("proxy_enforce_all", "0") == "1"})
 
     # -- tasks --------------------------------------------------------------
     @app.get("/api/tasks")
