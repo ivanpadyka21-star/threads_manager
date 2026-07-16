@@ -501,6 +501,26 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
         x = deltas.get(m, {})
         return f"{x.get('prev',0)}→{x.get('cur',0)} ({x.get('delta',0):+d})"
 
+    # Account health — a blocked account's numbers freeze/drop out of the totals.
+    # Without this the strategist misreads a block-driven dip as a content failure.
+    accs_all = store.list_accounts()
+    health_lines = [f"  {a.get('handle')}: {(a.get('health') or {}).get('status', 'unknown')}"
+                    for a in accs_all]
+    n_alive = sum(1 for a in accs_all
+                  if (a.get("health") or {}).get("status") == "alive")
+    n_blocked = sum(1 for a in accs_all
+                    if (a.get("health") or {}).get("status") == "blocked")
+    health_block = (
+        "=== ACCOUNT HEALTH — READ THIS BEFORE BLAMING THE CONTENT ===\n"
+        f"{n_alive} accounts alive, {n_blocked} BLOCKED by Meta (phone/human check).\n"
+        "A blocked account returns nothing from the API: its views/likes/clicks freeze "
+        "and drop out of the portfolio totals. Most of our accounts got gated because "
+        "all API traffic leaves from ONE IP, so Meta correlated them — this is an "
+        "INFRASTRUCTURE problem, NOT a content problem. If the totals dipped, say so "
+        "honestly and attribute it correctly: do NOT call the content a failure for a "
+        "dip caused by accounts being blocked. Judge the CONTENT only by the posts on "
+        "the accounts that are actually ALIVE.\n" + "\n".join(health_lines))
+
     # per-account reach + photo-vs-text conversion (operational layer)
     hands = {a["id"]: (a.get("handle") or "") for a in store.list_accounts()}
     acc_perf = defaultdict(lambda: {"likes": 0, "views": 0, "posts": 0})
@@ -535,6 +555,7 @@ def run_daily_analysis(store, count: int = 10, agent_factory=None) -> dict:
         f"TODAY'S GOAL: подписки {dg['followers']['cur']}/{dg['followers']['target']}, "
         f"лайки {dg['likes']['cur']}/{dg['likes']['target']}, клики {dg['clicks']['cur']}/{dg['clicks']['target']}",
         f"30-DAY: подписки {_g('followers')}, лайки {_g('likes')}, клики {_g('clicks')}",
+        health_block,
         "=== TODAY'S DELTAS (было→стало за сегодня — look them in the eye) ===\n"
         f"  подписчики: {_dl('followers')}\n  лайки: {_dl('likes')}\n"
         f"  клики: {_dl('clicks')}\n  просмотры профилей: {_dl('profile_views')}",
