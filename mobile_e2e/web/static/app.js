@@ -379,6 +379,11 @@ async function loadAccounts() {
         text: "🧩 " + (appInfo.label || appInfo.app_id_masked) }));
     }
     card.append(idn);
+    // Full proxy string (with password) — one click copies it, so it can be
+    // pasted straight into the antidetect profile. Local dashboard only.
+    if (r.proxy && r.proxy.host) {
+      card.append(proxyCopyRow(r.proxy));
+    }
     // footer: tone + connect + delete
     const foot = el("div", { class: "acct-foot" });
     foot.append(el("span", { class: "acct-tone", text: r.tone || "—" }));
@@ -405,6 +410,41 @@ async function loadAccounts() {
       el("b", { class: "blocked", text: `🔴 ${counts.blocked || 0}` }),
       el("b", { class: "muted", text: `⚪ ${(counts.unknown || 0) + (counts["no-token"] || 0) + (counts.error || 0)}` })));
   wrap.innerHTML = ""; wrap.append(bar, grid);
+}
+// Full proxy string for the antidetect profile: ip:port:login:password (falls
+// back to ip:port when the proxy needs no auth). Click anywhere on it to copy.
+function proxyFullString(p) {
+  const base = `${p.host}:${p.port}`;
+  return p.login ? `${base}:${p.login}:${p.password || ""}` : base;
+}
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Clipboard API needs a secure context; fall back to a hidden textarea.
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+function proxyCopyRow(p) {
+  const full = proxyFullString(p);
+  const row = el("div", { class: "acct-proxy-full", title: t("proxy.copy.hint") });
+  const txt = el("code", { class: "apf-text", text: full });
+  const btn = el("button", { class: "mini ghost apf-btn", text: "⧉" });
+  const doCopy = async () => {
+    const ok = await copyText(full);
+    toast(ok ? t("proxy.copied") : full, ok ? "success" : "info", ok ? 1400 : 8000);
+    if (ok) { btn.textContent = "✓"; setTimeout(() => { btn.textContent = "⧉"; }, 1200); }
+  };
+  row.onclick = doCopy;
+  row.append(el("span", { class: "apf-i", text: "🛡" }), txt, btn);
+  return row;
 }
 function acctHealthBadge(h) {
   const s = (h && h.status) || "unknown";
